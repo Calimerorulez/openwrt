@@ -1,0 +1,305 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+#include "cn61xx.dtsi"
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/leds/common.h>
+
+/ {
+	compatible = "ubnt,e200", "cavium,cn61xx";
+
+	aliases {
+		led-boot = &led_power;
+		led-failsafe = &led_power;
+		led-running = &led_power;
+		led-upgrade = &led_power;
+	};
+
+	memory {
+		device_type = "memory";
+		reg = <0x0 0x00000000 0x0 0x10000000
+		       0x0 0x20000000 0x0 0x70000000>;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		led_power: power {
+			function = LED_FUNCTION_POWER;
+			color = <LED_COLOR_ID_WHITE>;
+			gpios = <&gpio 15 GPIO_ACTIVE_HIGH>;
+		};
+	};
+};
+
+&bootbus {
+	cavium,cs-config@0 {
+		compatible = "cavium,octeon-3860-bootbus-config";
+		cavium,cs-index = <0>;
+		cavium,t-adr = <10>;
+		cavium,t-ce = <50>;
+		cavium,t-oe = <50>;
+		cavium,t-we = <35>;
+		cavium,t-rd-hld = <25>;
+		cavium,t-wr-hld = <35>;
+		cavium,t-pause  = <0>;
+		cavium,t-wait   = <300>;
+		cavium,t-page   = <25>;
+		cavium,t-rd-dly = <0>;
+
+		cavium,pages     = <0>;
+		cavium,bus-width = <8>;
+	};
+
+	cavium,cs-config@4 {
+		compatible = "cavium,octeon-3860-bootbus-config";
+		cavium,cs-index = <4>;
+		cavium,t-adr  = <10>;
+		cavium,t-ce   = <10>;
+		cavium,t-oe   = <160>;
+		cavium,t-we   = <100>;
+		cavium,t-rd-hld = <0>;
+		cavium,t-wr-hld = <0>;
+		cavium,t-pause  = <50>;
+		cavium,t-wait   = <300>;
+		cavium,t-page   = <300>;
+		cavium,t-rd-dly = <10>;
+
+		cavium,pages     = <0>;
+		cavium,bus-width = <8>;
+	};
+
+	cavium,cs-config@2 {
+		compatible = "cavium,octeon-3860-bootbus-config";
+		cavium,cs-index = <2>;
+		cavium,t-adr  = <0>;
+		cavium,t-ce   = <300>;
+		cavium,t-oe   = <125>;
+		cavium,t-we   = <150>;
+		cavium,t-rd-hld = <100>;
+		cavium,t-wr-hld = <300>;
+		cavium,t-pause  = <0>;
+		cavium,t-wait   = <300>;
+		cavium,t-page   = <300>;
+		cavium,t-rd-dly = <0>;
+
+		cavium,pages     = <0>;
+		cavium,bus-width = <16>;
+	};
+
+	cavium,cs-config@3 {
+		compatible = "cavium,octeon-3860-bootbus-config";
+		cavium,cs-index = <3>;
+		cavium,t-adr  = <0>;
+		cavium,t-ce   = <30>;
+		cavium,t-oe   = <125>;
+		cavium,t-we   = <150>;
+		cavium,t-rd-hld = <100>;
+		cavium,t-wr-hld = <30>;
+		cavium,t-pause  = <0>;
+		cavium,t-wait   = <30>;
+		cavium,t-page   = <300>;
+		cavium,t-rd-dly = <0>;
+
+		cavium,pages     = <0>;
+		cavium,wait-mode;
+		cavium,bus-width = <16>;
+	};
+
+	flash0: nor@0,0 {
+		compatible = "cfi-flash";
+		reg = <0 0 0x800000>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+	};
+};
+
+&dma0 {
+	status = "okay";
+};
+
+&dma1 {
+	status = "okay";
+};
+
+&mmc {
+	status = "okay";
+
+	mmc-slot@0 {
+		compatible = "cavium,octeon-6130-mmc-slot", "mmc-spi-slot";
+		reg = <0>;
+		voltage-ranges = <3300 3300>;
+		spi-max-frequency = <52000000>;
+		cavium,bus-max-width = <8>;
+	};
+};
+
+&smi0 {
+	status = "okay";
+
+	phy0: ethernet-phy@4 {
+		status = "disabled";
+		compatible = "broadcom,bcm", "ethernet-phy-ieee802.3-c22";
+		reg = <4>;
+		interrupt-parent = <&gpio>;
+	};
+
+	phy1: ethernet-phy@5 {
+		status = "disabled";
+		compatible = "broadcom,bcm", "ethernet-phy-ieee802.3-c22";
+		reg = <5>;
+		interrupt-parent = <&gpio>;
+	};
+
+	phy2: ethernet-phy@6 {
+		status = "disabled";
+		compatible = "broadcom,bcm", "ethernet-phy-ieee802.3-c22";
+		reg = <6>;
+		interrupt-parent = <&gpio>;
+	};
+
+	phy3: ethernet-phy@7 {
+		status = "disabled";
+		compatible = "broadcom,bcm", "ethernet-phy-ieee802.3-c22";
+		reg = <7>;
+		interrupt-parent = <&gpio>;
+	};
+
+	phy4: ethernet-phy@0 {
+		status = "disabled";
+		compatible = "broadcom,bcm", "ethernet-phy-ieee802.3-c22";
+		reg = <0>;
+		interrupt-parent = <&gpio>;
+	};
+
+	phy5: ethernet-phy@1 {
+		status = "disabled";
+		compatible = "broadcom,bcm", "ethernet-phy-ieee802.3-c22";
+		reg = <1>;
+		interrupt-parent = <&gpio>;
+	};
+
+	phy6: ethernet-phy@2 {
+		status = "disabled";
+		compatible = "broadcom,bcm", "ethernet-phy-ieee802.3-c22";
+		reg = <2>;
+		interrupt-parent = <&gpio>;
+	};
+
+	phy7: ethernet-phy@3 {
+		status = "disabled";
+		compatible = "broadcom,bcm", "ethernet-phy-ieee802.3-c22";
+		reg = <3>;
+		interrupt-parent = <&gpio>;
+	};
+};
+
+&smi1 {
+	status = "okay";
+
+	phy2sfp: ethernet-phy@0 {
+		status = "disabled";
+		compatible = "broadcom,bcm", "ethernet-phy-ieee802.3-c22";
+		reg = <0>;
+		interrupt-parent = <&gpio>;
+	};
+
+	phy3sfp: ethernet-phy@1 {
+		status = "disabled";
+		compatible = "broadcom,bcm", "ethernet-phy-ieee802.3-c22";
+		reg = <1>;
+		interrupt-parent = <&gpio>;
+	};
+};
+
+&pip {
+	status = "okay";
+
+	interface@0 {
+		status = "okay";
+	};
+
+	interface@1 {
+		status = "okay";
+	};
+};
+
+&twsi0 {
+	status = "okay";
+};
+
+&twsi1 {
+	status = "okay";
+};
+
+&usb {
+	status = "okay";
+};
+
+&ehci {
+	status = "okay";
+};
+
+&ohci {
+	status = "okay";
+};
+
+&uart0 {
+	status = "okay";
+	clock-frequency = <600000000>;
+};
+
+&spi {
+	status = "okay";
+
+	flash@0 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "Macronix,mx29lv640e", "spi-flash";
+		reg = <0>;
+		spi-max-frequency = <25000000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "boot0";
+				read-only;
+				reg = <0x00000 0xa0000>;
+			};
+
+			partition@a0000 {
+				label = "boot1";
+				read-only;
+				reg = <0xa0000 0xa0000>;
+			};
+
+			partition@140000 {
+				label = "eeprom";
+				read-only;
+				reg = <0x140000 0x10000>;
+
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					macaddr_eeprom_0: macaddr@0 {
+						compatible = "mac-base";
+						reg = <0x0 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
+				};
+			};
+
+			partition@7fe000 {
+				label = "u-boot_env";
+				read-only;
+				reg = <0x7fe000 0x2000>;
+			};
+		};
+	};
+};
