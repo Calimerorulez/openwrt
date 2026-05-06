@@ -42,16 +42,51 @@ define Device/itus_shield-router
 endef
 TARGET_DEVICES += itus_shield-router
 
-# Disable PCIe on ER as it doesn't have PCIe peripherals and some devices lock up on initialization
-ER_CMDLINE:=-mtdparts=phys_mapped_flash:640k(boot0)ro,640k(boot1)ro,64k(eeprom)ro root=/dev/mmcblk0p2 rootfstype=squashfs,ext4 rootwait pcie_octeon.pcie_disable=1
-define Device/ubnt_edgerouter
+define Device/ubnt_edgerouter-e200
   DEVICE_VENDOR := Ubiquiti
+  DEVICE_PACKAGES += kmod-button-hotplug kmod-leds-gpio kmod-of-mdio
+  KERNEL := kernel-bin | patch-cmdline | append-dtb-to-elf
+  KERNEL_DEPENDS := $$(wildcard $(DTS_DIR)/$(DEVICE_DTS).dts)
+  # Disable PCIe on ER as it doesn't have PCIe peripherals and some devices lock up on initialization
+  CMDLINE := -mtdparts=phys_mapped_flash:640k(boot0)ro,640k(boot1)ro,64k(eeprom)ro root=/dev/mmcblk0p2 rootfstype=squashfs,ext4 rootwait pcie_octeon.pcie_disable=1
+endef
+
+# E200
+define Device/ubnt_edgerouter-pro
+  $(Device/ubnt_edgerouter-e200)
+  DEVICE_MODEL := EdgeRouter PRO
+  DEVICE_DTS := cn6120_ubnt_edgerouter-pro
+  DEVICE_PACKAGES += kmod-sfp kmod-phy-broadcom
+endef
+
+# E201
+define Device/ubnt_edgerouter
+  $(Device/ubnt_edgerouter-e200)
   DEVICE_MODEL := EdgeRouter
+  DEVICE_DTS := cn6120_ubnt_edgerouter
   BOARD_NAME := er
-  CMDLINE := $(ER_CMDLINE)
   SUPPORTED_DEVICES += er
 endef
 TARGET_DEVICES += ubnt_edgerouter
+
+# E202
+define Device/ubnt_edgepoint-r8
+  $(Device/ubnt_edgerouter-e200)
+  DEVICE_MODEL := EdgePoint R8
+  DEVICE_DTS := cn6120_ubnt_edgepoint-r8
+  DEVICE_PACKAGES += kmod-sfp kmod-phy-broadcom
+endef
+TARGET_DEVICES += ubnt_edgepoint-r8
+
+# E221
+define Device/ubnt_unifi-usg-pro-4
+  $(Device/ubnt_edgerouter-e200)
+  DEVICE_MODEL := UniFi Security Gateway PRO
+  DEVICE_DTS := cn6120_ubnt_usg-pro-4
+  DEVICE_PACKAGES += kmod-sfp kmod-phy-broadcom
+  BOARD_NAME := ubnt,usg-pro-4
+endef
+TARGET_DEVICES += ubnt_unifi-usg-pro-4
 
 define Device/ubnt_edgerouter-e300
   DEVICE_VENDOR := Ubiquiti
@@ -61,6 +96,7 @@ define Device/ubnt_edgerouter-e300
   CMDLINE := root=/dev/mmcblk0p2 rootfstype=squashfs,ext4 rootwait
 endef
 
+# E300
 define Device/ubnt_edgerouter-4
   $(Device/ubnt_edgerouter-e300)
   DEVICE_MODEL := EdgeRouter 4
@@ -68,6 +104,7 @@ define Device/ubnt_edgerouter-4
 endef
 TARGET_DEVICES += ubnt_edgerouter-4
 
+# E301
 define Device/ubnt_edgerouter-6p
   $(Device/ubnt_edgerouter-e300)
   DEVICE_MODEL := EdgeRouter 6P
@@ -75,26 +112,29 @@ define Device/ubnt_edgerouter-6p
 endef
 TARGET_DEVICES += ubnt_edgerouter-6p
 
-ERLITE_CMDLINE:=-mtdparts=phys_mapped_flash:512k(boot0)ro,512k(boot1)ro,64k(eeprom)ro root=/dev/sda2 rootfstype=squashfs,ext4 rootwait
-define Device/ubnt_edgerouter-lite
+define Device/ubnt_edgerouter-e100
   DEVICE_VENDOR := Ubiquiti
-  DEVICE_MODEL := EdgeRouter Lite
-  DEVICE_DTS := cn5020_ubnt_edgerouter-lite
   KERNEL := kernel-bin | patch-cmdline | append-dtb-to-elf
   KERNEL_DEPENDS := $$(wildcard $(DTS_DIR)/$(DEVICE_DTS).dts)
-  CMDLINE := $(ERLITE_CMDLINE)
+  CMDLINE := -mtdparts=phys_mapped_flash:512k(boot0)ro,512k(boot1)ro,64k(eeprom)ro root=/dev/sda2 rootfstype=squashfs,ext4 rootwait
+endef
+
+# E101
+define Device/ubnt_edgerouter-lite
+  $(Device/ubnt_edgerouter-e100)
+  DEVICE_MODEL := EdgeRouter Lite
+  DEVICE_DTS := cn5020_ubnt_edgerouter-lite
   SUPPORTED_DEVICES += erlite ubnt,erlite
 endef
 TARGET_DEVICES += ubnt_edgerouter-lite
 
+# E120
 define Device/ubnt_unifi-usg
-  DEVICE_VENDOR := Ubiquiti
+  $(Device/ubnt_edgerouter-e100)
   DEVICE_MODEL := UniFi Security Gateway
   BOARD_NAME := ubnt,usg
   DEVICE_PACKAGES += kmod-gpio-button-hotplug kmod-leds-gpio
   DEVICE_DTS := cn5020_ubnt_usg
-  CMDLINE := $(ERLITE_CMDLINE)
-  KERNEL += | append-dtb-to-elf
   SUPPORTED_DEVICES += ubnt,usg
 endef
 TARGET_DEVICES += ubnt_unifi-usg
