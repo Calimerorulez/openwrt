@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+#include "cn6120_ubnt_edgerouter-e200.dtsi"
+
+/ {
+	model = "ubnt,usg-pro-4";
+	compatible = "ubnt,usg-pro-4", "ubnt,e200", "cavium,cn61xx";
+};
+
+&phy0 {
+	status = "okay";
+};
+
+&phy1 {
+	status = "okay";
+};
+
+&phy2sfp {
+	status = "okay";
+};
+
+&phy3sfp {
+	status = "okay";
+};
+
+&eth0 {
+	label = "lan1";
+	status = "okay";
+	phy-handle = <&phy0>;
+};
+
+&eth1 {
+	label = "lan2";
+	status = "okay";
+	phy-handle = <&phy1>;
+};
+
+&eth2 {
+	label = "wan1";
+	status = "okay";
+	phy-handle = <&phy2sfp>;
+};
+
+&eth3 {
+	label = "wan2";
+	status = "okay";
+	phy-handle = <&phy3sfp>;
+};

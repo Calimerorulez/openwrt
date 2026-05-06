@@ -12,6 +12,9 @@ ubnt,erlite|\
 ubnt,usg)
 	ucidef_set_interfaces_lan_wan "eth1 eth2" "eth0"
 	;;
+ubnt,usg-pro-4)
+	ucidef_set_interfaces_lan_wan "lan1 lan2" "wan1 wan2"
+	;;
 ubnt,edgerouter-4)
 	ucidef_set_interfaces_lan_wan "lan1 lan2 lan3" "lan0"
 	;;

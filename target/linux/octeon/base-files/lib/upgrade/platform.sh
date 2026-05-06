@@ -55,6 +55,9 @@ platform_copy_config() {
 		platform_copy_config_helper /dev/mmcblk1p1 vfat
 		;;
 	er|\
+	ubnt,edgerouter-pro|\
+	ubnt,edgepoint-r8|\
+	ubnt,usg-pro-4|\
 	ubnt,edgerouter-4|\
 	ubnt,edgerouter-6p)
 		platform_copy_config_helper /dev/mmcblk0p1 vfat
@@ -128,6 +131,9 @@ platform_do_upgrade() {
 	[ -b "${rootfs}" ] || return 1
 	case "$board" in
 	er | \
+	ubnt,edgerouter-pro|\
+	ubnt,edgepoint-r8|\
+	ubnt,usg-pro-4|\
 	ubnt,edgerouter-4 | \
 	ubnt,edgerouter-6p)
 		kernel=/dev/mmcblk0p1
@@ -161,11 +167,14 @@ platform_check_image() {
 
 	case "$board" in
 	er | \
-	itus,shield-router | \
+	ubnt,edgerouter-pro|\
+	ubnt,edgepoint-r8|\
+	ubnt,usg-pro-4|\
 	ubnt,edgerouter-4 | \
 	ubnt,edgerouter-6p | \
 	ubnt,erlite | \
 	ubnt,usg | \
+	itus,shield-router | \
 	cisco,vedge1000)
 		local kernel_length=$(tar xf $tar_file $board_dir/kernel -O | wc -c 2> /dev/null)
 		local rootfs_length=$(tar xf $tar_file $board_dir/root -O | wc -c 2> /dev/null)
