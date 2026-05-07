@@ -46,7 +46,7 @@ define Device/ubnt_edgerouter-e200
   DEVICE_VENDOR := Ubiquiti
   DEVICE_PACKAGES += kmod-button-hotplug kmod-leds-gpio kmod-of-mdio
   KERNEL := kernel-bin | patch-cmdline | append-dtb-to-elf
-  KERNEL_DEPENDS := $$(wildcard $(DTS_DIR)/$(DEVICE_DTS).dts)
+  KERNEL_DEPENDS := $(DTS_DIR)/cn61xx.dtsi $(DTS_DIR)/cn6120_ubnt_e200.dtsi $$(wildcard $(DTS_DIR)/$(DEVICE_DTS).dts)
   # Disable PCIe on ER as it doesn't have PCIe peripherals and some devices lock up on initialization
   CMDLINE := -mtdparts=phys_mapped_flash:640k(boot0)ro,640k(boot1)ro,64k(eeprom)ro root=/dev/mmcblk0p2 rootfstype=squashfs,ext4 rootwait pcie_octeon.pcie_disable=1
 endef
@@ -56,7 +56,8 @@ define Device/ubnt_edgerouter-pro
   $(Device/ubnt_edgerouter-e200)
   DEVICE_MODEL := EdgeRouter PRO
   DEVICE_DTS := cn6120_ubnt_edgerouter-pro
-  DEVICE_PACKAGES += kmod-sfp kmod-phy-broadcom
+  DEVICE_PACKAGES += kmod-sfp kmod-phy-broadcom kmod-i2c-mux-gpio
+  KERNEL_DEPENDS += $(DTS_DIR)/cn6120_ubnt_e20x.dtsi
 endef
 
 # E201
@@ -64,6 +65,7 @@ define Device/ubnt_edgerouter
   $(Device/ubnt_edgerouter-e200)
   DEVICE_MODEL := EdgeRouter
   DEVICE_DTS := cn6120_ubnt_edgerouter
+  KERNEL_DEPENDS += $(DTS_DIR)/cn6120_ubnt_e20x.dtsi
   BOARD_NAME := er
   SUPPORTED_DEVICES += er
 endef
@@ -74,7 +76,8 @@ define Device/ubnt_edgepoint-r8
   $(Device/ubnt_edgerouter-e200)
   DEVICE_MODEL := EdgePoint R8
   DEVICE_DTS := cn6120_ubnt_edgepoint-r8
-  DEVICE_PACKAGES += kmod-sfp kmod-phy-broadcom
+  DEVICE_PACKAGES += kmod-sfp kmod-phy-broadcom kmod-i2c-mux-gpio
+  KERNEL_DEPENDS += $(DTS_DIR)/cn6120_ubnt_e20x.dtsi
 endef
 TARGET_DEVICES += ubnt_edgepoint-r8
 
@@ -83,7 +86,7 @@ define Device/ubnt_unifi-usg-pro-4
   $(Device/ubnt_edgerouter-e200)
   DEVICE_MODEL := UniFi Security Gateway PRO
   DEVICE_DTS := cn6120_ubnt_usg-pro-4
-  DEVICE_PACKAGES += kmod-sfp kmod-phy-broadcom
+  DEVICE_PACKAGES += kmod-sfp kmod-phy-broadcom kmod-i2c-mux-gpio
   BOARD_NAME := ubnt,usg-pro-4
 endef
 TARGET_DEVICES += ubnt_unifi-usg-pro-4

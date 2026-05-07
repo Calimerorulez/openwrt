@@ -1,0 +1,91 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+#include "cn6120_ubnt_e200.dtsi"
+
+&phy0 {
+	status = "okay";
+};
+
+&phy1 {
+	status = "okay";
+};
+
+/* phy2 or phy2sfp are hooked up differently depending on the device, same for phy3 or phy3sfp */
+
+&phy4 {
+	status = "okay";
+};
+
+&phy5 {
+	status = "okay";
+};
+
+&phy6 {
+	status = "okay";
+};
+
+&phy7 {
+	status = "okay";
+};
+
+&eth0 {
+	status = "okay";
+	phy-handle = <&phy0>;
+	phy-mode = "sgmii";
+	nvmem-cells = <&macaddr_eeprom_0 4>;
+	nvmem-cell-names = "mac-address";
+};
+
+&eth1 {
+	status = "okay";
+	phy-handle = <&phy1>;
+	phy-mode = "sgmii";
+	nvmem-cells = <&macaddr_eeprom_0 5>;
+	nvmem-cell-names = "mac-address";
+};
+
+/* eth2 is hooked up differently depending on the device, so skip phy-* here */
+&eth2 {
+	status = "okay";
+	nvmem-cells = <&macaddr_eeprom_0 6>;
+	nvmem-cell-names = "mac-address";
+};
+
+/* eth3 is hooked up differently depending on the device, so skip phy-* here */
+&eth3 {
+	status = "okay";
+	nvmem-cells = <&macaddr_eeprom_0 7>;
+	nvmem-cell-names = "mac-address";
+};
+
+&eth4 {
+	status = "okay";
+	phy-handle = <&phy4>;
+	phy-mode = "sgmii";
+	nvmem-cells = <&macaddr_eeprom_0 0>;
+	nvmem-cell-names = "mac-address";
+};
+
+&eth5 {
+	status = "okay";
+	phy-handle = <&phy5>;
+	phy-mode = "sgmii";
+	nvmem-cells = <&macaddr_eeprom_0 1>;
+	nvmem-cell-names = "mac-address";
+};
+
+&eth6 {
+	status = "okay";
+	phy-handle = <&phy6>;
+	phy-mode = "sgmii";
+	nvmem-cells = <&macaddr_eeprom_0 2>;
+	nvmem-cell-names = "mac-address";
+};
+
+&eth7 {
+	status = "okay";
+	phy-handle = <&phy7>;
+	phy-mode = "sgmii";
+	nvmem-cells = <&macaddr_eeprom_0 3>;
+	nvmem-cell-names = "mac-address";
+};
