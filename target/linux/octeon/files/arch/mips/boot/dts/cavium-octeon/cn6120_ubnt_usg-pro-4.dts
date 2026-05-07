@@ -1,10 +1,27 @@
 // SPDX-License-Identifier: GPL-2.0-or-later OR MIT
 
-#include "cn6120_ubnt_edgerouter-e200.dtsi"
+#include "cn6120_ubnt_e200.dtsi"
 
 / {
-	model = "ubnt,usg-pro-4";
+	/* E221 */
 	compatible = "ubnt,usg-pro-4", "ubnt,e200", "cavium,cn61xx";
+	model = "Ubiquiti Unifi Security Gateway PRO (USG-PRO-4)";
+};
+
+&led_power {
+	color = <LED_COLOR_ID_BLUE>;
+};
+
+&sfpmux {
+	status = "okay";
+};
+
+&sfp1 {
+	status = "okay";
+};
+
+&sfp2 {
+	status = "okay";
 };
 
 &phy0 {
@@ -24,25 +41,35 @@
 };
 
 &eth0 {
-	label = "lan1";
 	status = "okay";
+	label = "lan1";
 	phy-handle = <&phy0>;
+	phy-mode = "sgmii";
+	nvmem-cells = <&macaddr_eeprom_0 0>;
+	nvmem-cell-names = "mac-address";
 };
 
 &eth1 {
-	label = "lan2";
 	status = "okay";
+	label = "lan2";
 	phy-handle = <&phy1>;
+	phy-mode = "sgmii";
+	nvmem-cells = <&macaddr_eeprom_0 1>;
+	nvmem-cell-names = "mac-address";
 };
 
 &eth2 {
-	label = "wan1";
 	status = "okay";
+	label = "wan1";
 	phy-handle = <&phy2sfp>;
+	nvmem-cells = <&macaddr_eeprom_0 2>;
+	nvmem-cell-names = "mac-address";
 };
 
 &eth3 {
 	label = "wan2";
 	status = "okay";
 	phy-handle = <&phy3sfp>;
+	nvmem-cells = <&macaddr_eeprom_0 3>;
+	nvmem-cell-names = "mac-address";
 };

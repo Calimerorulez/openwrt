@@ -8,6 +8,7 @@
 
 / {
 	compatible = "ubnt,e200", "cavium,cn61xx";
+	model = "Ubiquiti E200 series";
 
 	aliases {
 		led-boot = &led_power;
@@ -22,14 +23,54 @@
 		       0x0 0x20000000 0x0 0x70000000>;
 	};
 
-	leds {
-		compatible = "gpio-leds";
+        leds {
+                compatible = "gpio-leds";
+        };
 
-		led_power: power {
-			function = LED_FUNCTION_POWER;
-			color = <LED_COLOR_ID_WHITE>;
-			gpios = <&gpio 15 GPIO_ACTIVE_HIGH>;
+	keys {
+		compatible = "gpio-keys-polled";
+		poll-interval = <20>;
+
+		reset {
+			label = "reset";
+			linux,code = <KEY_RESTART>;
+			gpios = <&gpio 0x0 GPIO_ACTIVE_LOW>;
+			debounce-interval = <60>;
 		};
+	};
+
+	sfpmux: i2c-mux {
+		status = "disabled";
+		compatible = "i2c-mux-gpio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		i2c-parent = <&twsi1>;
+		mux-gpios = <&gpio 0xa GPIO_ACTIVE_HIGH>, <&gpio 0x9 GPIO_ACTIVE_HIGH>;
+
+		sfp1_i2c: i2c@1 {
+			reg = <1>;
+		};
+
+		sfp2_i2c: i2c@2 {
+			reg = <2>;
+		};
+	};
+
+	sfp1: sfp1 {
+		status = "disabled";
+		compatible = "sff,sfp";
+		i2c-bus = <&sfp1_i2c>;
+		mod-def0-gpios = <&gpio 0x1 GPIO_ACTIVE_LOW>;
+		tx-disable-gpios = <&gpio 0xc (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+	};
+
+	sfp2: sfp2 {
+		status = "disabled";
+		compatible = "sff,sfp";
+		i2c-bus = <&sfp2_i2c>;
+		mod-def0-gpios = <&gpio 0x2 GPIO_ACTIVE_LOW>;
+		tx-disable-gpios = <&gpio 0xd (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
 	};
 };
 
@@ -203,6 +244,7 @@
 		compatible = "broadcom,bcm", "ethernet-phy-ieee802.3-c22";
 		reg = <0>;
 		interrupt-parent = <&gpio>;
+		sfp = <&sfp1>;
 	};
 
 	phy3sfp: ethernet-phy@1 {
@@ -210,19 +252,20 @@
 		compatible = "broadcom,bcm", "ethernet-phy-ieee802.3-c22";
 		reg = <1>;
 		interrupt-parent = <&gpio>;
+		sfp = <&sfp2>;
 	};
 };
 
 &pip {
 	status = "okay";
+};
 
-	interface@0 {
-		status = "okay";
-	};
+&pip0 {
+	status = "okay";
+};
 
-	interface@1 {
-		status = "okay";
-	};
+&pip1 {
+	status = "okay";
 };
 
 &twsi0 {
