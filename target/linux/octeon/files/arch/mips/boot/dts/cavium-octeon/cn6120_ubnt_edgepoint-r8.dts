@@ -1,17 +1,22 @@
 // SPDX-License-Identifier: GPL-2.0-or-later OR MIT
 
-#include "cn6120_ubnt_edgerouter-e200.dtsi"
+#include "cn6120_ubnt_e20x.dtsi"
 
 / {
-	model = "ubnt,edgepoint-r8";
+	/* E202 */
 	compatible = "ubnt,edgepoint-r8", "ubnt,e200", "cavium,cn61xx";
+	model = "Ubiquiti EdgePoint R8 (EP-R8)";
 };
 
-&phy0 {
+&sfpmux {
 	status = "okay";
 };
 
-&phy1 {
+&sfp1 {
+	status = "okay";
+};
+
+&sfp2 {
 	status = "okay";
 };
 
@@ -23,58 +28,10 @@
 	status = "okay";
 };
 
-&phy4 {
-	status = "okay";
-};
-
-&phy5 {
-	status = "okay";
-};
-
-&phy6 {
-	status = "okay";
-};
-
-&phy7 {
-	status = "okay";
-};
-
-&eth0 {
-	status = "okay";
-	phy-handle = <&phy0>;
-};
-
-&eth1 {
-	status = "okay";
-	phy-handle = <&phy1>;
-};
-
 &eth2 {
-	status = "okay";
 	phy-handle = <&phy2sfp>;
 };
 
 &eth3 {
-	status = "okay";
 	phy-handle = <&phy3sfp>;
-};
-
-&eth4 {
-	status = "okay";
-	phy-handle = <&phy4>;
-};
-
-&eth5 {
-	status = "okay";
-	phy-handle = <&phy5>;
-};
-
-&eth6 {
-	status = "okay";
-	phy-handle = <&phy6>;
-};
-
-&eth7 {
-	status = "okay";
-	phy-handle = <&phy7>;
 };
