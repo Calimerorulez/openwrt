@@ -1,0 +1,413 @@
+--- a/drivers/net/phy/broadcom.c
++++ b/drivers/net/phy/broadcom.c
+@@ -16,8 +16,10 @@
+ #include <linux/delay.h>
+ #include <linux/module.h>
+ #include <linux/phy.h>
++#include <linux/sfp.h>
+ #include <linux/pm_wakeup.h>
+ #include <linux/brcmphy.h>
++#include <linux/ethtool.h>
+ #include <linux/of.h>
+ #include <linux/interrupt.h>
+ #include <linux/irq.h>
+@@ -39,6 +41,10 @@ struct bcm54xx_phy_priv {
+ 	int	wake_irq;
+ 	bool	wake_irq_enabled;
+ 	bool	brr_mode;
++	bool	alt_mode;
++	int	sfp_port;
++	__ETHTOOL_DECLARE_LINK_MODE_MASK(sfp_supported);
++	DECLARE_PHY_INTERFACE_MASK(sfp_interfaces);
+ };
+ 
+ /* Link modes for BCM58411 PHY */
+@@ -54,6 +60,14 @@ static const int bcm54811_linkmodes[] =
+ 	ETHTOOL_LINK_MODE_10baseT_Half_BIT
+ };
+ 
++/* SerDes link modes for BCM5482 PHY */
++static const int bcm5482_alt_serdes_linkmodes[] = {
++	ETHTOOL_LINK_MODE_FIBRE_BIT,
++	ETHTOOL_LINK_MODE_100baseFX_Half_BIT,
++	ETHTOOL_LINK_MODE_100baseFX_Full_BIT,
++	ETHTOOL_LINK_MODE_1000baseX_Full_BIT,
++};
++
+ /* Long-Distance Signaling (BroadR-Reach mode aneg) relevant linkmode bits */
+ static const int lds_br_bits[] = {
+ 	ETHTOOL_LINK_MODE_Autoneg_BIT,
+@@ -1424,6 +1438,253 @@ static int bcm54811_read_status(struct p
+ 	return genphy_read_status(phydev);
+ }
+ 
++static int bcm5482_set_alt_serdes(struct phy_device *phydev, bool on, bool force)
++{
++	struct bcm54xx_phy_priv *priv = phydev->priv;
++	int err;
++
++	if (on == priv->alt_mode && !force)
++		return 0;
++
++	/* Enable/disable secondary SerDes and set as LED source */
++	err = bcm_phy_toggle_shadow(phydev, BCM5482_SHD_SSD,
++	                                    BCM5482_SHD_SSD_LEDM | BCM5482_SHD_SSD_EN,
++	                                    on);
++	if (err < 0)
++		return err;
++
++	/* Enable/disable SGMII slave mode and auto-detection */
++	err = bcm_phy_toggle_exp(phydev, MII_BCM54XX_EXP_SEL_SSD | BCM5482_SSD_SGMII_SLAVE,
++	                                 BCM5482_SSD_SGMII_SLAVE_EN | BCM5482_SSD_SGMII_SLAVE_AD,
++	                                 on);
++	if (err < 0)
++		return err;
++
++	/* Disable/enable secondary SerDes powerdown */
++	err = bcm_phy_toggle_exp(phydev, MII_BCM54XX_EXP_SEL_SSD | BCM5482_SSD_1000BX_CTL,
++	                                 BCM5482_SSD_1000BX_CTL_PWRDOWN,
++	                                 !on);
++	if (err < 0)
++		return err;
++
++	/* Select/deselect primary SerDes 1000BASE-X register set */
++	err = bcm_phy_toggle_shadow(phydev, BCM54XX_SHD_MODE, BCM54XX_SHD_MODE_1000BX, on);
++	if (err < 0)
++		return err;
++
++	/* Use LED1 as secondary SerDes ACTIVITY LED, or back as multicolor */
++	if (on)
++		err = bcm_phy_write_shadow(phydev, BCM54XX_SHD_LEDS1,
++			BCM54XX_SHD_LEDS1_LED1(BCM_LED_SRC_ACTIVITYLED) |
++			BCM54XX_SHD_LEDS1_LED3(BCM_LED_SRC_LINKSPD2));
++	else
++		err = bcm_phy_write_shadow(phydev, BCM54XX_SHD_LEDS1,
++			BCM54XX_SHD_LEDS1_LED1(BCM_LED_SRC_MULTICOLOR1) |
++			BCM54XX_SHD_LEDS1_LED3(BCM_LED_SRC_MULTICOLOR1));
++	if (err < 0)
++		return err;
++
++	priv->alt_mode = on;
++	return 0;
++}
++
++static int bcm5482_read_alt_serdes_status(struct phy_device *phydev)
++{
++	int val;
++
++	val = bcm_phy_read_shadow(phydev, BCM5482_SHD_SSD);
++	if (val < 0)
++		return val;
++
++	if (val & BCM5482_SHD_SSD_LINK) {
++		phydev->link = 1;
++	} else {
++		phydev->link = 0;
++	}
++
++	if (val & BCM5482_SHD_SSD_FD) {
++		phydev->duplex = DUPLEX_FULL;
++	} else {
++		phydev->duplex = DUPLEX_HALF;
++	}
++
++	if (val & BCM5482_SHD_SSD_100FX_EN) {
++		phydev->speed = SPEED_100;
++	} else {
++		phydev->speed = SPEED_1000;
++	}
++
++	return 0;
++}
++
++static int bcm5482_get_alt_serdes_features(struct phy_device *phydev)
++{
++	struct bcm54xx_phy_priv *priv = phydev->priv;
++
++	linkmode_copy(phydev->supported, priv->sfp_supported);
++	return 0;
++}
++
++static int bcm5482_config_alt_serdes(struct phy_device *phydev)
++{
++	/* TODO */
++	return genphy_config_aneg(phydev);
++}
++
++static int bcm5482_switch_sfp(struct phy_device *phydev, bool force)
++{
++	struct bcm54xx_phy_priv *priv = phydev->priv;
++	struct device *dev = &phydev->mdio.dev;
++	phy_interface_t interface;
++	int err;
++
++	interface = sfp_select_interface(phydev->sfp_bus, priv->sfp_supported);
++	if (interface == PHY_INTERFACE_MODE_NA)
++		return 0;
++
++	if (!force)
++		dev_info(dev, "switching to %s SFP module PHY\n", phy_modes(interface));
++	err = bcm5482_set_alt_serdes(phydev, true, force);
++	if (err)
++		return err;
++
++	phydev->interface = interface;
++	phy_interface_copy(phydev->possible_interfaces, priv->sfp_interfaces);
++	phydev->port = priv->sfp_port;
++	phydev->link = 0;
++	phydev->autoneg = AUTONEG_DISABLE;
++	return 0;
++}
++
++static int bcm5482_switch_internal(struct phy_device *phydev, bool force)
++{
++	struct device *dev = &phydev->mdio.dev;
++	int err;
++
++	if (!force)
++		dev_info(dev, "switching to internal PHY\n");
++	err = bcm5482_set_alt_serdes(phydev, false, force);
++	if (err)
++		return err;
++
++	phydev->interface = PHY_INTERFACE_MODE_SGMII;
++	phydev->port = PORT_TP;
++	phydev->link = 0;
++	return 0;
++}
++
++static int bcm5482_get_features(struct phy_device *phydev)
++{
++	struct bcm54xx_phy_priv *priv = phydev->priv;
++
++	if (priv->alt_mode)
++		return bcm5482_get_alt_serdes_features(phydev);
++	else if (phydev->is_c45)
++		return genphy_c45_pma_read_abilities(phydev);
++	else
++		return genphy_read_abilities(phydev);
++}
++
++static int bcm5482_sfp_insert(void *upstream, const struct sfp_eeprom_id *id)
++{
++	struct phy_device *phydev = upstream;
++	struct bcm54xx_phy_priv *priv = phydev->priv;
++	__ETHTOOL_DECLARE_LINK_MODE_MASK(phy_supported) = { 0, };
++	int err;
++
++	/* Update SFP PHY information */
++	linkmode_zero(priv->sfp_supported);
++	phy_interface_zero(priv->sfp_interfaces);
++	sfp_parse_support(phydev->sfp_bus, id, priv->sfp_supported, priv->sfp_interfaces);
++	priv->sfp_port = sfp_parse_port(phydev->sfp_bus, id, NULL);
++
++	/* Filter out link modes supported by the PHY */
++	linkmode_set_bit_array(bcm5482_alt_serdes_linkmodes, ARRAY_SIZE(bcm5482_alt_serdes_linkmodes), phy_supported);
++	linkmode_and(priv->sfp_supported, priv->sfp_supported, phy_supported);
++
++	err = bcm5482_switch_sfp(phydev, false);
++	if (err < 0)
++		return err;
++
++	/* update abilities */
++	return bcm5482_get_features(phydev);
++}
++
++static void bcm5482_sfp_remove(void *upstream)
++{
++	struct phy_device *phydev = upstream;
++	struct bcm54xx_phy_priv *priv = phydev->priv;
++	int err;
++
++	linkmode_zero(priv->sfp_supported);
++	phy_interface_zero(priv->sfp_interfaces);
++	priv->sfp_port = PORT_OTHER;
++
++	err = bcm5482_switch_internal(phydev, false);
++	if (err == 0)
++		/* update abilities */
++		bcm5482_get_features(phydev);
++}
++
++static const struct sfp_upstream_ops bcm5482_sfp_ops = {
++	.attach = phy_sfp_attach,
++	.detach = phy_sfp_detach,
++	.module_insert = bcm5482_sfp_insert,
++	.module_remove = bcm5482_sfp_remove,
++	.connect_phy = phy_sfp_connect_phy,
++	.disconnect_phy = phy_sfp_disconnect_phy,
++};
++
++static int bcm5482_phy_probe(struct phy_device *phydev)
++{
++	int err;
++
++	err = bcm54xx_phy_probe(phydev);
++	if (err < 0)
++		return err;
++
++	return phy_sfp_probe(phydev, &bcm5482_sfp_ops);
++}
++
++static int bcm5482_config_init(struct phy_device *phydev)
++{
++	struct bcm54xx_phy_priv *priv = phydev->priv;
++	int err;
++
++	err = bcm54xx_config_init(phydev);
++	if (err < 0)
++		return err;
++
++	if (priv->alt_mode)
++		err = bcm5482_switch_sfp(phydev, true);
++	else
++		err = bcm5482_switch_internal(phydev, true);
++	if (err < 0)
++		return err;
++
++	return 0;
++}
++
++static int bcm5482_config_aneg(struct phy_device *phydev)
++{
++	struct bcm54xx_phy_priv *priv = phydev->priv;
++
++	if (priv->alt_mode)
++		return bcm5482_config_alt_serdes(phydev);
++	else
++		return genphy_config_aneg(phydev);
++}
++
++static int bcm5482_read_status(struct phy_device *phydev)
++{
++	struct bcm54xx_phy_priv *priv = phydev->priv;
++
++	if (priv->alt_mode)
++		return bcm5482_read_alt_serdes_status(phydev);
++	else
++		return genphy_read_status(phydev);
++}
++
+ static struct phy_driver broadcom_drivers[] = {
+ {
+ 	.phy_id		= PHY_ID_BCM5411,
+@@ -1591,10 +1852,13 @@ static struct phy_driver broadcom_driver
+ 	.get_sset_count	= bcm_phy_get_sset_count,
+ 	.get_strings	= bcm_phy_get_strings,
+ 	.get_stats	= bcm54xx_get_stats,
+-	.probe		= bcm54xx_phy_probe,
+-	.config_init	= bcm54xx_config_init,
++	.probe		= bcm5482_phy_probe,
++	.config_init	= bcm5482_config_init,
++	.config_aneg    = bcm5482_config_aneg,
+ 	.config_intr	= bcm_phy_config_intr,
+ 	.handle_interrupt = bcm_phy_handle_interrupt,
++	.get_features	= bcm5482_get_features,
++	.read_status    = bcm5482_read_status,
+ 	.link_change_notify	= bcm54xx_link_change_notify,
+ 	.led_brightness_set	= bcm_phy_led_brightness_set,
+ }, {
+--- a/include/linux/brcmphy.h
++++ b/include/linux/brcmphy.h
+@@ -215,11 +215,19 @@
+ #define BCM54XX_SHD_LEDS1_LED3(src)	((src & 0xf) << 4)
+ 					/* LED1 / ~LINKSPD[1] selector */
+ #define BCM54XX_SHD_LEDS1_LED1(src)	((src & 0xf) << 0)
+-#define BCM54XX_SHD_LEDS2	0x0e	/* 01110: LED Selector 2 */
+-#define BCM54XX_SHD_RGMII_MODE	0x0b	/* 01011: RGMII Mode Selector */
+-#define BCM5482_SHD_SSD		0x14	/* 10100: Secondary SerDes control */
+-#define BCM5482_SHD_SSD_LEDM	0x0008	/* SSD LED Mode enable */
+-#define BCM5482_SHD_SSD_EN	0x0001	/* SSD enable */
++#define BCM54XX_SHD_LEDS2		0x0e	/* 01110: LED Selector 2 */
++#define BCM54XX_SHD_RGMII_MODE		0x0b	/* 01011: RGMII Mode Selector */
++#define BCM5482_SHD_SSD			0x14	/* 10100: Secondary SerDes control */
++#define BCM5482_SHD_SSD_LINK_CHANGE	0x0200  /* SSD link status changed */
++#define BCM5482_SHD_SSD_LINK		0x0100  /* SSD link status */
++#define BCM5482_SHD_SSD_FD		0x0080  /* SSD is full-duplex */
++#define BCM5482_SHD_SSD_100FX_AD_EN	0x0040  /* SSD 100FX auto-detect enable */
++#define BCM5482_SHD_SSD_100FX_FD_EN	0x0020  /* SSD 100FX full-duplex enable */
++#define BCM5482_SHD_SSD_100FX_EN        0x0010  /* SSD 100FX mode */
++#define BCM5482_SHD_SSD_LEDM		0x0008	/* SSD LED Mode enable */
++#define BCM5482_SHD_SSD_SYNC_EN		0x0004  /* SSD sync status enable */
++#define BCM5482_SHD_SSD_SD_EN		0x0002  /* SSD signal detect enable */
++#define BCM5482_SHD_SSD_EN		0x0001	/* SSD enable */
+ 
+ /* 10011: SerDes 100-FX Control Register */
+ #define BCM54616S_SHD_100FX_CTRL	0x13
+--- a/drivers/net/phy/bcm-phy-lib.c
++++ b/drivers/net/phy/bcm-phy-lib.c
+@@ -103,6 +103,27 @@ int bcm_phy_modify_exp(struct phy_device
+ }
+ EXPORT_SYMBOL_GPL(bcm_phy_modify_exp);
+ 
++int __bcm_phy_toggle_exp(struct phy_device *phydev, u16 reg, u16 bits, bool on)
++{
++	if (on)
++		return __bcm_phy_modify_exp(phydev, reg, 0, bits);
++	else
++		return __bcm_phy_modify_exp(phydev, reg, bits, 0);
++}
++EXPORT_SYMBOL_GPL(__bcm_phy_toggle_exp);
++
++int bcm_phy_toggle_exp(struct phy_device *phydev, u16 reg, u16 bits, bool on)
++{
++	int ret;
++
++	phy_lock_mdio_bus(phydev);
++	ret = __bcm_phy_toggle_exp(phydev, reg, bits, on);
++	phy_unlock_mdio_bus(phydev);
++
++	return ret;
++}
++EXPORT_SYMBOL_GPL(bcm_phy_toggle_exp);
++
+ int bcm54xx_auxctl_read(struct phy_device *phydev, u16 regnum)
+ {
+ 	/* The register must be written to both the Shadow Register Select and
+@@ -256,6 +277,24 @@ int bcm_phy_write_shadow(struct phy_devi
+ }
+ EXPORT_SYMBOL_GPL(bcm_phy_write_shadow);
+ 
++int bcm_phy_toggle_shadow(struct phy_device *phydev, u16 shadow,
++			  u16 bits, bool on)
++{
++	int val;
++
++	val = bcm_phy_read_shadow(phydev, shadow);
++	if (val < 0)
++		return val;
++
++	if (on)
++		val |= bits;
++	else
++		val &= ~bits;
++
++	return bcm_phy_write_shadow(phydev, shadow, val);
++}
++EXPORT_SYMBOL_GPL(bcm_phy_toggle_shadow);
++
+ int __bcm_phy_read_rdb(struct phy_device *phydev, u16 rdb)
+ {
+ 	int val;
+--- a/drivers/net/phy/bcm-phy-lib.h
++++ b/drivers/net/phy/bcm-phy-lib.h
+@@ -33,9 +33,11 @@ struct ethtool_wolinfo;
+ int __bcm_phy_write_exp(struct phy_device *phydev, u16 reg, u16 val);
+ int __bcm_phy_read_exp(struct phy_device *phydev, u16 reg);
+ int __bcm_phy_modify_exp(struct phy_device *phydev, u16 reg, u16 mask, u16 set);
++int __bcm_phy_toggle_exp(struct phy_device *phydev, u16 reg, u16 bits, bool on);
+ int bcm_phy_write_exp(struct phy_device *phydev, u16 reg, u16 val);
+ int bcm_phy_read_exp(struct phy_device *phydev, u16 reg);
+ int bcm_phy_modify_exp(struct phy_device *phydev, u16 reg, u16 mask, u16 set);
++int bcm_phy_toggle_exp(struct phy_device *phydev, u16 reg, u16 bits, bool on);
+ 
+ static inline int bcm_phy_write_exp_sel(struct phy_device *phydev,
+ 					u16 reg, u16 val)
+@@ -59,6 +61,7 @@ int bcm_phy_read_misc(struct phy_device
+ int bcm_phy_write_shadow(struct phy_device *phydev, u16 shadow,
+ 			 u16 val);
+ int bcm_phy_read_shadow(struct phy_device *phydev, u16 shadow);
++int bcm_phy_toggle_shadow(struct phy_device *phydev, u16 shadow, u16 bits, bool on);
+ 
+ int __bcm_phy_write_rdb(struct phy_device *phydev, u16 rdb, u16 val);
+ int bcm_phy_write_rdb(struct phy_device *phydev, u16 rdb, u16 val);
