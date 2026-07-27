@@ -269,7 +269,22 @@
 };
 
 &twsi0 {
-	status = "okay";
+        status = "okay";
+
+        rtc@68 {
+                compatible = "dallas,ds1337";
+                reg = <0x68>;
+        };
+
+        tmp421: tmp@4d {
+                compatible = "ti,tmp421";
+                reg = <0x4d>;
+        };
+
+        tmp421_2: tmp@4e {
+                compatible = "ti,tmp421";
+                reg = <0x4e>;
+        };
 };
 
 &twsi1 {
