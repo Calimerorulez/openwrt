@@ -1,75 +1,81 @@
 // SPDX-License-Identifier: GPL-2.0-or-later OR MIT
-
 #include "cn6120_ubnt_e200.dtsi"
-
 / {
-	/* E221 */
-	compatible = "ubnt,usg-pro-4", "ubnt,e200", "cavium,cn61xx";
-	model = "Ubiquiti Unifi Security Gateway PRO (USG-PRO-4)";
+        /* E221 */
+        compatible = "ubnt,usg-pro-4", "ubnt,e200", "cavium,cn61xx";
+        model = "Ubiquiti Unifi Security Gateway PRO (USG-PRO-4)";
+
+        aliases {
+                led-running = &led_power_blue;
+        };
 };
 
-&led_power {
-	color = <LED_COLOR_ID_BLUE>;
+&{/leds} {
+        led_power_blue: power-blue {
+                function = LED_FUNCTION_POWER;
+                color = <LED_COLOR_ID_BLUE>;
+                gpios = <&gpio 14 GPIO_ACTIVE_HIGH>;
+        };
 };
 
 &sfpmux {
-	status = "okay";
+        status = "okay";
 };
 
 &sfp1 {
-	status = "okay";
+        status = "okay";
 };
 
 &sfp2 {
-	status = "okay";
+        status = "okay";
 };
 
 &phy0 {
-	status = "okay";
+        status = "okay";
 };
 
 &phy1 {
-	status = "okay";
+        status = "okay";
 };
 
 &phy2sfp {
-	status = "okay";
+        status = "okay";
 };
 
 &phy3sfp {
-	status = "okay";
+        status = "okay";
 };
 
 &eth0 {
-	status = "okay";
-	label = "lan1";
-	phy-handle = <&phy0>;
-	phy-mode = "sgmii";
-	nvmem-cells = <&macaddr_eeprom_0 0>;
-	nvmem-cell-names = "mac-address";
+        status = "okay";
+        label = "lan1";
+        phy-handle = <&phy0>;
+        phy-mode = "sgmii";
+        nvmem-cells = <&macaddr_eeprom_0 0>;
+        nvmem-cell-names = "mac-address";
 };
 
 &eth1 {
-	status = "okay";
-	label = "lan2";
-	phy-handle = <&phy1>;
-	phy-mode = "sgmii";
-	nvmem-cells = <&macaddr_eeprom_0 1>;
-	nvmem-cell-names = "mac-address";
+        status = "okay";
+        label = "lan2";
+        phy-handle = <&phy1>;
+        phy-mode = "sgmii";
+        nvmem-cells = <&macaddr_eeprom_0 1>;
+        nvmem-cell-names = "mac-address";
 };
 
 &eth2 {
-	status = "okay";
-	label = "wan1";
-	phy-handle = <&phy2sfp>;
-	nvmem-cells = <&macaddr_eeprom_0 2>;
-	nvmem-cell-names = "mac-address";
+        status = "okay";
+        label = "wan1";
+        phy-handle = <&phy2sfp>;
+        nvmem-cells = <&macaddr_eeprom_0 2>;
+        nvmem-cell-names = "mac-address";
 };
 
 &eth3 {
-	label = "wan2";
-	status = "okay";
-	phy-handle = <&phy3sfp>;
-	nvmem-cells = <&macaddr_eeprom_0 3>;
-	nvmem-cell-names = "mac-address";
+        label = "wan2";
+        status = "okay";
+        phy-handle = <&phy3sfp>;
+        nvmem-cells = <&macaddr_eeprom_0 3>;
+        nvmem-cell-names = "mac-address";
 };
