@@ -1,0 +1,14 @@
+{
+    "luci-app-nanomq": {
+        "description": "Grant access to NanoMQ dashboard",
+        "read": {
+            "uci": [ "nanomq_ui" ],
+            "ubus": {
+                "nanomq": [ "proxy" ]
+            }
+        },
+        "write": {
+            "uci": [ "nanomq_ui" ]
+        }
+    }
+}

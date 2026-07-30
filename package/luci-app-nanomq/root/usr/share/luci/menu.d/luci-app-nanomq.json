@@ -1,0 +1,34 @@
+{
+    "admin/services/nanomq": {
+        "title": "NanoMQ",
+        "order": 50,
+        "action": {
+            "type": "firstchild"
+        },
+        "depends": {
+            "acl": [ "luci-app-nanomq" ]
+        }
+    },
+    "admin/services/nanomq/overview": {
+        "title": "Overview",
+        "order": 10,
+        "action": {
+            "type": "view",
+            "path": "nanomq/overview"
+        },
+        "depends": {
+            "acl": [ "luci-app-nanomq" ]
+        }
+    },
+    "admin/services/nanomq/settings": {
+        "title": "Settings",
+        "order": 20,
+        "action": {
+            "type": "view",
+            "path": "nanomq/settings"
+        },
+        "depends": {
+            "acl": [ "luci-app-nanomq" ]
+        }
+    }
+}

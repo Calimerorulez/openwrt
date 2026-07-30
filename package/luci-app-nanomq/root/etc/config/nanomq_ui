@@ -1,0 +1,4 @@
+config nanomq 'main'
+	option port '8081'
+	option username 'admin'
+	option password 'public'
