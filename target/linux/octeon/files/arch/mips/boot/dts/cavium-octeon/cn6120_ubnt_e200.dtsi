@@ -25,6 +25,12 @@
 
         leds {
                 compatible = "gpio-leds";
+
+                led_power: power {
+                        function = LED_FUNCTION_POWER;
+                        color = <LED_COLOR_ID_WHITE>;
+                        gpios = <&gpio 15 GPIO_ACTIVE_HIGH>;
+                };
         };
 
 	keys {
