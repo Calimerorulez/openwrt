@@ -49,6 +49,7 @@ define Device/ubnt_edgerouter-e200
   KERNEL_DEPENDS := $(DTS_DIR)/cn61xx.dtsi $(DTS_DIR)/cn6120_ubnt_e200.dtsi $$(wildcard $(DTS_DIR)/$(DEVICE_DTS).dts)
   # Disable PCIe on ER as it doesn't have PCIe peripherals and some devices lock up on initialization
   CMDLINE := -mtdparts=phys_mapped_flash:640k(boot0)ro,640k(boot1)ro,64k(eeprom)ro root=/dev/mmcblk0p2 rootfstype=squashfs,ext4 rootwait pcie_octeon.pcie_disable=1
+  IMAGE/sysupgrade.tar/squashfs += | append-metadata
 endef
 
 # E200
@@ -88,6 +89,7 @@ define Device/ubnt_unifi-usg-pro-4
   DEVICE_DTS := cn6120_ubnt_usg-pro-4
   DEVICE_PACKAGES += kmod-sfp kmod-phy-broadcom kmod-i2c-mux-gpio
   BOARD_NAME := ubnt,usg-pro-4
+  SUPPORTED_DEVICES := ubnt,usg-pro-4
 endef
 TARGET_DEVICES += ubnt_unifi-usg-pro-4
 
