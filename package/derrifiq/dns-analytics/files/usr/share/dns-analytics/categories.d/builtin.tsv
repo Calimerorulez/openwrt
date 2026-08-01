@@ -1,0 +1,258 @@
+# pattern	match_type	category	priority
+facebook.com	suffix	communication/social	100
+instagram.com	suffix	communication/social	100
+linkedin.com	suffix	communication/social	100
+reddit.com	suffix	communication/forums	100
+x.com	suffix	communication/social	100
+telegram.org	suffix	communication/chat	100
+whatsapp.com	suffix	communication/chat	100
+discord.com	suffix	communication/chat	100
+youtube.com	suffix	entertainment/streaming-video	100
+netflix.com	suffix	entertainment/streaming-video	100
+twitch.tv	suffix	entertainment/streaming-video	100
+spotify.com	suffix	entertainment/streaming-audio	100
+amazon.com	suffix	commerce/shopping	100
+bol.com	suffix	commerce/shopping	100
+aliexpress.com	suffix	commerce/shopping	100
+temu.com	suffix	commerce/shopping	100
+
+# Apple-platform en infrastructuur
+apple.com	suffix	infrastructure/apple	100
+icloud.com	suffix	infrastructure/apple	100
+apple-dns.net	suffix	infrastructure/apple	100
+aaplimg.com	suffix	infrastructure/apple	100
+itunes-apple.com	suffix	infrastructure/apple	100
+push-apple.com	suffix	infrastructure/apple	100
+lb-apple.com	suffix	infrastructure/apple	100
+
+# Google-platform en infrastructuur
+google.com	suffix	infrastructure/google	100
+googleapis.com	suffix	infrastructure/google	100
+gstatic.com	suffix	infrastructure/google	100
+googleusercontent.com	suffix	infrastructure/google	100
+
+# Ubiquiti / UniFi
+ui.com	suffix	infrastructure/ubiquiti	100
+
+# Home Assistant
+home-assistant.io	suffix	infrastructure/home-automation	100
+
+# Docker en containerregistries
+docker.io	suffix	infrastructure/containers	100
+ghcr.io	suffix	infrastructure/containers	100
+lscr.io	suffix	infrastructure/containers	100
+
+# Cloudplatforms
+amazonaws.com	suffix	infrastructure/cloud	100
+cloudflare.com	suffix	infrastructure/cloud	100
+
+# Energie en zonnepanelen
+solarmandata.com	suffix	iot/energy	100
+energyzero.nl	suffix	iot/energy	100
+aurumeurope.com	suffix	iot/energy	100
+
+# Slimme woning en IoT
+tado.com	suffix	iot/home-automation	100
+homeconnecthca.com	suffix	iot/home-automation	100
+homewizard.com	suffix	iot/home-automation	100
+
+# Weer en meetstations
+wunderground.com	suffix	weather/services	100
+pwsweather.com	suffix	weather/services	100
+weerlive.nl	suffix	weather/services	100
+
+# Communicatie
+cheapconnect.net	suffix	communication/voip	100
+
+# OpenAI
+chatgpt.com	suffix	ai/services	100
+openai.com	suffix	ai/services	100
+
+# Telemetrie en analytics
+app-analytics-services.com	suffix	telemetry/analytics	100
+app-measurement.com	suffix	telemetry/analytics	100
+unity3d.com	suffix	telemetry/analytics	100
+
+# Life360
+life360.com	suffix	iot/location	100
+
+# Lokale discovery en reverse DNS
+internal	suffix	infrastructure/local-discovery	100
+in-addr.arpa	suffix	infrastructure/local-discovery	100
+
+# Apple-aliases en CDN-namen
+akadns.net	suffix	infrastructure/apple	90
+icloud-content.com	suffix	infrastructure/apple	100
+origin-apple.com	suffix	infrastructure/apple	100
+cdn-apple.com	suffix	infrastructure/apple	100
+mzstatic.com	suffix	infrastructure/apple	100
+
+# WhatsApp
+whatsapp.net	suffix	communication/chat	100
+
+# LinkedIn
+licdn.com	suffix	communication/social	100
+
+# Mozilla
+mozilla.org	suffix	infrastructure/mozilla	100
+
+# GitHub en OpenWrt
+github.com	suffix	infrastructure/development	100
+openwrt.org	suffix	infrastructure/development	100
+
+# Mail en agenda
+intention.nl	suffix	communication/mail	100
+whserver.nl	suffix	communication/mail	100
+gmail.com	suffix	communication/mail	100
+agenda-abonnement.nl	suffix	productivity/calendar	100
+thecalstore.com	suffix	productivity/calendar	100
+
+# Weer
+weathercloud.net	suffix	weather/services	100
+open-meteo.com	suffix	weather/services	100
+tomorrow.io	suffix	weather/services	100
+aviationweather.gov	suffix	weather/services	100
+
+# Flitsmeister
+flitsmeister.app	suffix	transport/navigation	100
+
+# Telemetrie en advertenties
+google-analytics.com	suffix	telemetry/analytics	100
+googletagmanager.com	suffix	telemetry/analytics	100
+appsflyersdk.com	suffix	telemetry/analytics	100
+sentry.io	suffix	telemetry/analytics	100
+singular.net	suffix	telemetry/analytics	100
+crashlytics.com	suffix	telemetry/analytics	100
+onetrust.io	suffix	telemetry/privacy	100
+doubleclick.net	suffix	advertising/tracking	100
+googlesyndication.com	suffix	advertising/tracking	100
+criteo.com	suffix	advertising/tracking	100
+applovin.com	suffix	advertising/tracking	100
+
+# Microsoft
+microsoft.com	suffix	infrastructure/microsoft	100
+sfx.ms	suffix	infrastructure/microsoft	100
+
+# NTP
+pool.ntp.org	suffix	infrastructure/time	100
+
+# Home automation
+ikea.com	suffix	iot/home-automation	100
+
+# Apps en diensten
+duolingo.com	suffix	education/language	100
+revenuecat.com	suffix	infrastructure/app-services	100
+metacore.net	suffix	entertainment/gaming	100
+a2z.com	suffix	infrastructure/amazon	100
+
+# Microsoft connectivity checks
+msftconnecttest.com	suffix	infrastructure/microsoft	100
+msftncsi.com	suffix	infrastructure/microsoft	100
+skype.com	suffix	communication/chat	100
+
+# Publieke DNS-diensten
+cloudflare-dns.com	suffix	infrastructure/dns	100
+dns.google	exact	infrastructure/dns	100
+
+# Gaming
+medal.tv	suffix	entertainment/gaming	100
+roblox.com	suffix	entertainment/gaming	100
+ropro.io	suffix	entertainment/gaming	100
+
+# Discord-assets
+discordapp.com	suffix	communication/chat	100
+
+# Hardwareleveranciers
+hp.com	suffix	infrastructure/hardware-vendors	100
+
+# Weer en bliksemdetectie
+blitzortung.org	suffix	weather/services	100
+
+# Mail
+biass.nl	suffix	communication/mail	100
+xs4all.nl	suffix	communication/mail	100
+
+# Wachtwoordbeheer
+bitwarden.com	suffix	security/password-management	100
+
+# Apple-aanvullingen
+apple	exact	infrastructure/apple	100
+apple-cloudkit.com	suffix	infrastructure/apple	100
+
+# Reddit-assets
+redditstatic.com	suffix	communication/forums	100
+
+# Mozilla-diensten
+services.mozilla.com	suffix	infrastructure/mozilla	100
+
+# Specifieke CDN-hostnamen
+h3.apis.apple.map.fastly.net	exact	infrastructure/apple	100
+www.linkedin.com.cdn.cloudflare.net	exact	communication/social	100
+haproxy-ingress-bumblebee.life360.com.cdn.cloudflare.net	exact	iot/location	100
+mozilla.map.fastly.net	exact	infrastructure/mozilla	100
+mozilla-ohttp.fastly-edge.com	exact	infrastructure/mozilla	100
+dualstack.reddit.map.fastly.net	exact	communication/forums	100
+reddit.map.fastly.net	exact	communication/forums	100
+
+# Spotify-assets
+scdn.co	suffix	entertainment/streaming-audio	100
+
+# Weer
+met.no	suffix	weather/services	100
+
+# Sonos
+sonos.com	suffix	iot/home-automation	100
+
+# Generieke CDN-fallbacks, bewust lage prioriteit
+akamai.net	suffix	infrastructure/cdn	10
+akamaiedge.net	suffix	infrastructure/cdn	10
+fastly.net	suffix	infrastructure/cdn	10
+fastly-edge.com	suffix	infrastructure/cdn	10
+fastly-masque.net	suffix	infrastructure/cdn	10
+cdn.cloudflare.net	suffix	infrastructure/cdn	10
+
+# DNS-infrastructuur
+ns1p.net	suffix	infrastructure/dns	100
+
+# Browsers en veilige navigatie
+safebrowsing.apple	suffix	security/safe-browsing	100
+
+# Telemetrie en marketing
+braze.com	suffix	telemetry/analytics	100
+amplitude.com	suffix	telemetry/analytics	100
+overwolf.com	suffix	telemetry/analytics	100
+
+# Advertenties
+googletagservices.com	suffix	advertising/tracking	100
+googleadservices.com	suffix	advertising/tracking	100
+
+# Certificaatcontrole
+digicert.com	suffix	security/certificates	100
+
+# Cloudflare-tunnels
+argotunnel.com	suffix	infrastructure/cloud	100
+
+# Microsoft-infrastructuur
+live.com	suffix	infrastructure/microsoft	100
+trafficmanager.net	suffix	infrastructure/microsoft	100
+
+# Gaming
+riotgames.com	suffix	entertainment/gaming	100
+riotcdn.net	suffix	entertainment/gaming	100
+pvp.net	suffix	entertainment/gaming	100
+
+# Weer en bliksemdetectie
+lightningmaps.org	suffix	weather/services	100
+
+# Gezondheid en voeding
+yazio.com	suffix	health/nutrition	100
+
+# Shopping en kortingsdiensten
+joinhoney.com	suffix	commerce/shopping	100
+
+# Mobiele netwerkinfrastructuur
+3gppnetwork.org	suffix	infrastructure/mobile-network	100
+
+# Overige herkenbare diensten
+usenetjunction.com	suffix	entertainment/usenet	100
+ampproject.org	suffix	infrastructure/web-platform	100

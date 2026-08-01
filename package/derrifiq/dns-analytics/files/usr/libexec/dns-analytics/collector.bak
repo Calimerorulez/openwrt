@@ -1,0 +1,385 @@
+#!/bin/sh
+# shellcheck source=/dev/null
+
+. /usr/libexec/dns-analytics/common.sh
+
+INTERVAL="$(safe_integer "$(uci_get main interval)" 60)"
+QUERY_LIMIT="$(safe_integer "$(uci_get main query_limit)" 5000)"
+COLLECTD_HOST="$(uci_get main collectd_host)"
+COLLECTD_PLUGIN="$(uci_get main collectd_plugin)"
+
+ADGUARD_URL="$(uci_get adguard url)"
+ADGUARD_SECRET_FILE="$(uci_get adguard secret_file)"
+
+[ -n "$COLLECTD_HOST" ] || COLLECTD_HOST="$(cat /proc/sys/kernel/hostname 2>/dev/null)"
+[ -n "$COLLECTD_PLUGIN" ] || COLLECTD_PLUGIN="exec-dnscat"
+[ -n "$ADGUARD_URL" ] || ADGUARD_URL="http://127.0.0.1:3000"
+
+ADGUARD_URL="${ADGUARD_URL%/}"
+
+ADGUARD_USER="$(read_secret_value "$ADGUARD_SECRET_FILE" username 2>/dev/null)"
+ADGUARD_PASS="$(read_secret_value "$ADGUARD_SECRET_FILE" password 2>/dev/null)"
+
+ensure_directory "$RUNTIME_DIR"
+
+cleanup() {
+	rm -f \
+		"$RUNTIME_DIR/querylog.$$" \
+		"$RUNTIME_DIR/queries.$$" \
+		"$RUNTIME_DIR/counts.$$" \
+		"$RUNTIME_DIR/cycle.$$.sql"
+}
+
+trap cleanup EXIT INT TERM HUP
+
+emit_zero_values() {
+	sqlite_query "
+SELECT name
+FROM categories
+WHERE enabled = 1
+ORDER BY name;
+" |
+	while IFS="$(printf '\t')" read -r category; do
+		[ -n "$category" ] || continue
+
+		metric="$(normalize_metric_name "$category")"
+		[ -n "$metric" ] || continue
+
+		printf 'PUTVAL "%s/%s/gauge-%s" interval=%s N:0\n' \
+			"$COLLECTD_HOST" \
+			"$COLLECTD_PLUGIN" \
+			"$metric" \
+			"$INTERVAL"
+	done
+}
+
+emit_cycle_values() {
+	sqlite_query "
+SELECT
+    c.name,
+    COALESCE(cc.query_count, 0)
+FROM categories AS c
+LEFT JOIN current_cycle_counts AS cc
+    ON cc.category_name = c.name
+WHERE c.enabled = 1
+ORDER BY c.name;
+" |
+	while IFS="$(printf '\t')" read -r category value; do
+		[ -n "$category" ] || continue
+
+		metric="$(normalize_metric_name "$category")"
+		value="$(safe_integer "$value" 0)"
+
+		[ -n "$metric" ] || continue
+
+		printf 'PUTVAL "%s/%s/gauge-%s" interval=%s N:%s\n' \
+			"$COLLECTD_HOST" \
+			"$COLLECTD_PLUGIN" \
+			"$metric" \
+			"$INTERVAL" \
+			"$value"
+	done
+}
+
+fetch_querylog() {
+	output="$1"
+
+	if [ -n "$ADGUARD_USER" ]; then
+		curl -fsS \
+			--connect-timeout 5 \
+			--max-time 20 \
+			-u "$ADGUARD_USER:$ADGUARD_PASS" \
+			"$ADGUARD_URL/control/querylog?limit=$QUERY_LIMIT" \
+			-o "$output"
+	else
+		curl -fsS \
+			--connect-timeout 5 \
+			--max-time 20 \
+			"$ADGUARD_URL/control/querylog?limit=$QUERY_LIMIT" \
+			-o "$output"
+	fi
+}
+
+while :; do
+	cycle_started="$(date +%s)"
+
+	querylog="$RUNTIME_DIR/querylog.$$"
+	queries="$RUNTIME_DIR/queries.$$"
+	counts="$RUNTIME_DIR/counts.$$"
+	sql_file="$RUNTIME_DIR/cycle.$$.sql"
+
+	last_time="$(
+		sqlite_query "
+SELECT value
+FROM metadata
+WHERE key = 'last_query_time'
+LIMIT 1;
+"
+	)"
+
+	[ -n "$last_time" ] ||
+		last_time="1970-01-01T00:00:00.000000000Z"
+
+	if ! fetch_querylog "$querylog"; then
+		log_message "AdGuard-querylog kon niet worden opgehaald"
+		emit_zero_values
+
+		sleep "$INTERVAL"
+		continue
+	fi
+
+	jq -r --arg since "$last_time" '
+		.data[]?
+		| select(.time > $since)
+		| [
+			.time,
+			(
+				.question.name // ""
+				| ascii_downcase
+				| sub("\\.$"; "")
+			)
+		]
+		| @tsv
+	' "$querylog" > "$queries"
+
+	awk -F '\t' '
+		$2 != "" {
+			count[$2]++
+
+			if ($1 > newest)
+				newest = $1
+		}
+
+		END {
+			for (domain in count)
+				print domain "\t" count[domain]
+
+			if (newest != "")
+				print "__NEWEST__\t" newest
+		}
+	' "$queries" > "$counts"
+
+	now="$(date +%s)"
+	today="$(date +%F)"
+	newest=""
+
+	{
+		printf 'PRAGMA foreign_keys = ON;\n'
+		printf 'PRAGMA busy_timeout = 5000;\n'
+		printf 'BEGIN IMMEDIATE;\n'
+		printf 'DELETE FROM current_cycle_counts;\n'
+
+		while IFS="$(printf '\t')" read -r domain count; do
+			if [ "$domain" = "__NEWEST__" ]; then
+				newest="$count"
+				continue
+			fi
+
+			domain="$(normalize_domain "$domain")"
+			count="$(safe_integer "$count" 0)"
+
+			[ -n "$domain" ] || continue
+			[ "$count" -gt 0 ] || continue
+
+			q_domain="$(sql_quote "$domain")"
+			q_day="$(sql_quote "$today")"
+
+			cat <<SQL
+INSERT INTO domains
+(
+    domain,
+    category_id,
+    confidence,
+    classification_source,
+    classification_status,
+    first_seen,
+    last_seen,
+    query_count
+)
+SELECT
+    '$q_domain',
+    COALESCE(
+        (
+            SELECT dr.category_id
+            FROM domain_rules AS dr
+            WHERE '$q_domain' = dr.domain
+               OR '$q_domain' LIKE '%.' || dr.domain
+            ORDER BY length(dr.domain) DESC
+            LIMIT 1
+        ),
+        (
+            SELECT id
+            FROM categories
+            WHERE name = 'unknown'
+            LIMIT 1
+        )
+    ),
+    CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM domain_rules AS dr
+            WHERE '$q_domain' = dr.domain
+               OR '$q_domain' LIKE '%.' || dr.domain
+        )
+        THEN 1.0
+        ELSE NULL
+    END,
+    CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM domain_rules AS dr
+            WHERE '$q_domain' = dr.domain
+               OR '$q_domain' LIKE '%.' || dr.domain
+        )
+        THEN 'rule'
+        ELSE 'unknown'
+    END,
+    CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM domain_rules AS dr
+            WHERE '$q_domain' = dr.domain
+               OR '$q_domain' LIKE '%.' || dr.domain
+        )
+        THEN 'classified'
+        ELSE 'pending'
+    END,
+    $now,
+    $now,
+    $count
+ON CONFLICT(domain) DO UPDATE SET
+    last_seen = excluded.last_seen,
+    query_count = domains.query_count + excluded.query_count,
+    updated_at = unixepoch(),
+    category_id = CASE
+        WHEN domains.classification_status IN ('pending', 'failed')
+         AND excluded.classification_status = 'classified'
+        THEN excluded.category_id
+        ELSE domains.category_id
+    END,
+    confidence = CASE
+        WHEN domains.classification_status IN ('pending', 'failed')
+         AND excluded.classification_status = 'classified'
+        THEN excluded.confidence
+        ELSE domains.confidence
+    END,
+    classification_source = CASE
+        WHEN domains.classification_status IN ('pending', 'failed')
+         AND excluded.classification_status = 'classified'
+        THEN excluded.classification_source
+        ELSE domains.classification_source
+    END,
+    classification_status = CASE
+        WHEN domains.classification_status IN ('pending', 'failed')
+         AND excluded.classification_status = 'classified'
+        THEN 'classified'
+        ELSE domains.classification_status
+    END;
+
+INSERT INTO daily_domain_counts
+(
+    day,
+    domain_id,
+    query_count,
+    first_seen,
+    last_seen
+)
+SELECT
+    '$q_day',
+    id,
+    $count,
+    $now,
+    $now
+FROM domains
+WHERE domain = '$q_domain'
+ON CONFLICT(day, domain_id) DO UPDATE SET
+    query_count = daily_domain_counts.query_count + excluded.query_count,
+    last_seen = excluded.last_seen;
+
+INSERT INTO current_cycle_counts
+(
+    category_name,
+    query_count
+)
+SELECT
+    c.name,
+    $count
+FROM domains AS d
+JOIN categories AS c
+    ON c.id = d.category_id
+WHERE d.domain = '$q_domain'
+ON CONFLICT(category_name) DO UPDATE SET
+    query_count = current_cycle_counts.query_count + excluded.query_count;
+
+INSERT INTO daily_category_counts
+(
+    day,
+    category_id,
+    category_name,
+    query_count
+)
+SELECT
+    '$q_day',
+    c.id,
+    c.name,
+    $count
+FROM domains AS d
+JOIN categories AS c
+    ON c.id = d.category_id
+WHERE d.domain = '$q_domain'
+ON CONFLICT(day, category_name) DO UPDATE SET
+    query_count = daily_category_counts.query_count + excluded.query_count;
+
+INSERT INTO classification_queue
+(
+    domain_id,
+    priority,
+    attempts,
+    next_attempt_at,
+    queued_at
+)
+SELECT
+    d.id,
+    d.query_count,
+    0,
+    0,
+    unixepoch()
+FROM domains AS d
+JOIN categories AS c
+    ON c.id = d.category_id
+WHERE d.domain = '$q_domain'
+  AND c.name = 'unknown'
+  AND d.classification_status = 'pending'
+ON CONFLICT(domain_id) DO UPDATE SET
+    priority = excluded.priority;
+SQL
+		done < "$counts"
+
+		if [ -n "$newest" ]; then
+			q_newest="$(sql_quote "$newest")"
+
+			cat <<SQL
+INSERT INTO metadata(key, value)
+VALUES ('last_query_time', '$q_newest')
+ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+SQL
+		fi
+
+		printf 'COMMIT;\n'
+	} > "$sql_file"
+
+	if ! sqlite_file "$sql_file"; then
+		log_message "Database-update van meetcyclus mislukt"
+		emit_zero_values
+	else
+		emit_cycle_values
+	fi
+
+	rm -f "$querylog" "$queries" "$counts" "$sql_file"
+
+	cycle_finished="$(date +%s)"
+	delay=$((INTERVAL - cycle_finished + cycle_started))
+
+	[ "$delay" -gt 0 ] || delay=1
+	sleep "$delay"
+done

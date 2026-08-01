@@ -1,0 +1,426 @@
+#!/bin/sh
+# shellcheck source=/dev/null
+
+set -u
+
+. /usr/libexec/dns-analytics/common.sh
+
+
+show_help() {
+    cat <<'USAGE'
+DNS Analytics selftest
+
+Gebruik:
+  dns-analytics-selftest
+  dns-analytics-selftest --help
+
+De selftest controleert:
+  - vereiste bestanden en uitvoerbare scripts;
+  - bestandsrechten en eigenaarschap;
+  - SQLite-integriteit en foreign keys;
+  - schema- en applicatiemetadata;
+  - collectd en de DNS Analytics-collector;
+  - luci_statistics-configuratie;
+  - basiswerking van de review-CLI.
+
+Exitcodes:
+  0  alle verplichte controles zijn geslaagd
+  1  één of meer fouten zijn gevonden
+USAGE
+}
+
+case "${1:-}" in
+    -h|--help|help)
+        show_help
+        exit 0
+        ;;
+    '')
+        ;;
+    *)
+        printf 'Fout: onbekend argument: %s\n' "$1" >&2
+        show_help >&2
+        exit 1
+        ;;
+esac
+
+ERRORS=0
+WARNINGS=0
+
+ok() {
+    printf 'OK:   %s\n' "$*"
+}
+
+warning() {
+    printf 'WARN: %s\n' "$*"
+    WARNINGS=$((WARNINGS + 1))
+}
+
+error() {
+    printf 'FOUT: %s\n' "$*"
+    ERRORS=$((ERRORS + 1))
+}
+
+check_file() {
+    description="$1"
+    file="$2"
+
+    if [ -f "$file" ]; then
+        ok "$description aanwezig: $file"
+    else
+        error "$description ontbreekt: $file"
+    fi
+}
+
+check_executable() {
+    description="$1"
+    file="$2"
+
+    if [ -x "$file" ]; then
+        ok "$description uitvoerbaar: $file"
+    else
+        error "$description ontbreekt of is niet uitvoerbaar: $file"
+    fi
+}
+
+printf 'DNS Analytics selftest\n'
+printf '======================\n\n'
+
+printf '=== BESTANDEN ===\n'
+
+check_file "UCI-configuratie" "/etc/config/dns-analytics"
+check_file "Database" "$DATABASE"
+check_file "AdGuard-secret" "/etc/dns-analytics/adguard.secret"
+
+check_executable \
+    "Collector" \
+    "/usr/libexec/dns-analytics/collector"
+
+check_executable \
+    "Regelsynchronisatie" \
+    "/usr/libexec/dns-analytics/db-sync-rules"
+
+check_executable \
+    "Herclassificatie" \
+    "/usr/libexec/dns-analytics/db-reclassify"
+
+check_executable \
+    "Review-CLI" \
+    "/usr/sbin/dns-analytics-review"
+
+printf '\n=== RECHTEN ===\n'
+
+config_listing="$(
+    ls -ln /etc/config/dns-analytics 2>/dev/null
+)"
+
+config_permissions="$(
+    printf '%s\n' "$config_listing" |
+    awk 'NF { print $1; exit }'
+)"
+
+config_uid="$(
+    printf '%s\n' "$config_listing" |
+    awk 'NF { print $3; exit }'
+)"
+
+config_gid="$(
+    printf '%s\n' "$config_listing" |
+    awk 'NF { print $4; exit }'
+)"
+
+if [ "$config_permissions" = "-rw-r--r--" ]; then
+    ok "/etc/config/dns-analytics heeft modus 0644"
+else
+    error "/etc/config/dns-analytics heeft rechten ${config_permissions:-onbekend}; verwacht -rw-r--r--"
+fi
+
+if [ "$config_uid:$config_gid" = "0:0" ]; then
+    ok "/etc/config/dns-analytics is eigendom van root:root"
+else
+    error "/etc/config/dns-analytics heeft uid:gid ${config_uid:-?}:${config_gid:-?}; verwacht 0:0"
+fi
+
+secret_listing="$(
+    ls -ln /etc/dns-analytics/adguard.secret 2>/dev/null
+)"
+
+secret_permissions="$(
+    printf '%s\n' "$secret_listing" |
+    awk 'NF { print $1; exit }'
+)"
+
+secret_uid="$(
+    printf '%s\n' "$secret_listing" |
+    awk 'NF { print $3; exit }'
+)"
+
+secret_gid="$(
+    printf '%s\n' "$secret_listing" |
+    awk 'NF { print $4; exit }'
+)"
+
+nogroup_gid="$(
+    awk -F: '
+        $1 == "nogroup" {
+            print $3
+            exit
+        }
+    ' /etc/group
+)"
+
+if [ "$secret_permissions" = "-rw-r-----" ]; then
+    ok "adguard.secret heeft modus 0640"
+else
+    error "adguard.secret heeft rechten ${secret_permissions:-onbekend}; verwacht -rw-r-----"
+fi
+
+if [ "$secret_uid" = "0" ] &&
+   [ -n "$nogroup_gid" ] &&
+   [ "$secret_gid" = "$nogroup_gid" ]
+then
+    ok "adguard.secret is eigendom van root:nogroup"
+else
+    error "adguard.secret heeft uid:gid ${secret_uid:-?}:${secret_gid:-?}; verwacht 0:${nogroup_gid:-?}"
+fi
+
+printf '\n=== DATABASE ===\n'
+
+if [ -f "$DATABASE" ]; then
+    integrity="$(
+        sqlite3 "$DATABASE" "PRAGMA integrity_check;" 2>/dev/null
+    )"
+
+    if [ "$integrity" = "ok" ]; then
+        ok "SQLite-integriteitscontrole"
+    else
+        error "SQLite-integriteitscontrole: ${integrity:-geen antwoord}"
+    fi
+
+    foreign_keys="$(
+        sqlite3 "$DATABASE" "PRAGMA foreign_key_check;" 2>/dev/null
+    )"
+
+    if [ -z "$foreign_keys" ]; then
+        ok "geen foreign-key-fouten"
+    else
+        error "foreign-key-fouten gevonden"
+        printf '%s\n' "$foreign_keys"
+    fi
+
+    schema_version="$(
+        sqlite3 "$DATABASE" "
+SELECT value
+FROM metadata
+WHERE key = 'schema_version'
+LIMIT 1;
+" 2>/dev/null
+    )"
+
+    application_version="$(
+        sqlite3 "$DATABASE" "
+SELECT value
+FROM metadata
+WHERE key = 'application_version'
+LIMIT 1;
+" 2>/dev/null
+    )"
+
+    if [ "$schema_version" = "3" ]; then
+        ok "schema_version=3"
+    else
+        error "schema_version=${schema_version:-ontbreekt}; verwacht 3"
+    fi
+
+    printf 'INFO: application_version=%s\n' \
+        "${application_version:-ontbreekt}"
+
+    rule_count="$(
+        sqlite3 "$DATABASE" "
+SELECT COUNT(*)
+FROM domain_rules
+WHERE enabled = 1;
+" 2>/dev/null
+    )"
+
+    category_count="$(
+        sqlite3 "$DATABASE" "
+SELECT COUNT(*)
+FROM categories
+WHERE enabled = 1;
+" 2>/dev/null
+    )"
+
+    if [ "${rule_count:-0}" -gt 0 ]; then
+        ok "$rule_count ingeschakelde regels"
+    else
+        error "geen ingeschakelde regels gevonden"
+    fi
+
+    if [ "${category_count:-0}" -gt 0 ]; then
+        ok "$category_count ingeschakelde categorieën"
+    else
+        error "geen ingeschakelde categorieën gevonden"
+    fi
+
+    watermark="$(
+        sqlite3 "$DATABASE" "
+SELECT value
+FROM metadata
+WHERE key = 'last_query_time'
+LIMIT 1;
+" 2>/dev/null
+    )"
+
+    if [ -n "$watermark" ]; then
+        ok "watermark aanwezig: $watermark"
+    else
+        warning "watermark ontbreekt"
+    fi
+fi
+
+printf '\n=== PROCESSEN ===\n'
+
+collectd_pids="$(
+    for status in /proc/[0-9]*/status; do
+        [ -r "$status" ] || continue
+
+        name="$(
+            awk '/^Name:/ { print $2; exit }' "$status"
+        )"
+
+        [ "$name" = "collectd" ] || continue
+
+        pid="${status#/proc/}"
+        pid="${pid%/status}"
+        printf '%s\n' "$pid"
+    done
+)"
+
+collectd_count="$(
+    printf '%s\n' "$collectd_pids" |
+    awk 'NF { count++ } END { print count + 0 }'
+)"
+
+if [ "$collectd_count" -eq 1 ]; then
+    ok "één collectd-daemon"
+else
+    error "$collectd_count collectd-daemons; verwacht 1"
+fi
+
+collector_pids="$(
+    ps |
+    awk '/[d]ns-analytics\/collector/ { print $1 }'
+)"
+
+collector_count="$(
+    printf '%s\n' "$collector_pids" |
+    awk 'NF { count++ } END { print count + 0 }'
+)"
+
+if [ "$collector_count" -eq 1 ]; then
+    ok "één DNS Analytics-collector"
+else
+    error "$collector_count DNS Analytics-collectors; verwacht 1"
+fi
+
+for pid in $collector_pids; do
+    ppid="$(
+        awk '/^PPid:/ { print $2 }' \
+            "/proc/$pid/status" 2>/dev/null
+    )"
+
+    if [ -z "$ppid" ]; then
+        error "parent van collector $pid kon niet worden bepaald"
+        continue
+    fi
+
+    if [ "$ppid" = "1" ]; then
+        error "collector $pid is verweesd onder PID 1"
+        continue
+    fi
+
+    parent_name="$(
+        awk '/^Name:/ { print $2; exit }' \
+            "/proc/$ppid/status" 2>/dev/null
+    )"
+
+    parent_command="$(
+        tr '\0' ' ' < "/proc/$ppid/cmdline" 2>/dev/null
+    )"
+
+    case "$parent_name" in
+        collectd|exec)
+            case "$parent_command" in
+                *"/usr/sbin/collectd "*|*"/usr/sbin/collectd")
+                    ok "collector $pid heeft collectd-parent $ppid ($parent_name)"
+                    ;;
+                *)
+                    error "parent $ppid heet $parent_name maar heeft onverwacht commando: ${parent_command:-onbekend}"
+                    ;;
+            esac
+            ;;
+        *)
+            error "collector $pid heeft onverwachte parent $ppid: ${parent_name:-onbekend}"
+            ;;
+    esac
+done
+
+printf '\n=== CONFIGURATIE ===\n'
+
+exec_sections="$(
+    uci -q show luci_statistics |
+    sed -n \
+        "s/^\(luci_statistics\.[^=]*\)=collectd_exec_input$/\1/p" |
+    while read -r section; do
+        cmdline="$(
+            uci -q get "$section.cmdline"
+        )"
+
+        [ "$cmdline" = "/usr/libexec/dns-analytics/collector" ] &&
+            printf '%s\n' "$section"
+    done
+)"
+
+exec_count="$(
+    printf '%s\n' "$exec_sections" |
+    awk 'NF { count++ } END { print count + 0 }'
+)"
+
+if [ "$exec_count" -eq 1 ]; then
+    ok "één luci_statistics Exec-configuratie"
+else
+    error "$exec_count luci_statistics Exec-configuraties; verwacht 1"
+fi
+
+if grep -q \
+    '/usr/libexec/dns-analytics/collector' \
+    /tmp/collectd.conf 2>/dev/null
+then
+    ok "collector aanwezig in effectieve collectd-configuratie"
+else
+    error "collector ontbreekt in /tmp/collectd.conf"
+fi
+
+printf '\n=== REVIEW-CLI ===\n'
+
+if /usr/sbin/dns-analytics-review categories >/dev/null 2>&1; then
+    ok "categories-commando"
+else
+    error "categories-commando mislukt"
+fi
+
+if /usr/sbin/dns-analytics-review stats >/dev/null 2>&1; then
+    ok "stats-commando"
+else
+    error "stats-commando mislukt"
+fi
+
+printf '\n=== RESULTAAT ===\n'
+printf 'Fouten:       %s\n' "$ERRORS"
+printf 'Waarschuwingen: %s\n' "$WARNINGS"
+
+if [ "$ERRORS" -gt 0 ]; then
+    exit 1
+fi
+
+exit 0

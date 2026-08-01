@@ -1,0 +1,65 @@
+DNS Analytics changelog
+=======================
+
+2.1.1
+-----
+
+Nieuw:
+- review-CLI voor handmatige beoordeling van onbekende domeinen;
+- lokale exact- en suffixregels met prioriteiten;
+- automatische historische herclassificatie;
+- installatie-selftest;
+- read-only regressietest;
+- versiecommando en uitgebreide helpteksten;
+- auditlogging van handmatige reviewacties.
+
+Verbeterd:
+- robuust collector- en collectd-lifecyclebeheer;
+- veilige package-upgrades zonder verweesde collectors;
+- BusyBox-compatibiliteit;
+- behoud van configuratie, secrets, database en lokale regels;
+- uitgebreidere ingebouwde domeincategorisatie;
+- definitieve package-documentatie.
+
+Opgelost:
+- dubbele en verweesde collectorprocessen;
+- ongeldige classificatiestatus tijdens herclassificatie;
+- GNU-stat-afhankelijkheid in de selftest;
+- foutieve collectd-procestelling;
+- ongewenste SQLite busy-timeout-uitvoer;
+- lokale-regelbeheerfouten in de review-CLI.
+
+2.1.1-rc2
+---------
+
+Opgelost:
+- bestaande collectorprocessen worden tijdens een package-upgrade
+  eerst normaal gestopt en zo nodig geforceerd beëindigd;
+- een upgrade laat daardoor geen verweesde collector onder PID 1 achter.
+
+2.1.1-rc1
+---------
+
+Nieuw:
+- review-CLI voor handmatige beoordeling en lokale regels;
+- automatische historische herclassificatie;
+- installatie-selftest;
+- read-only regressietest;
+- versiecommando en uitgebreide helpteksten;
+- auditlogging voor handmatige reviewacties.
+
+Verbeterd:
+- exact- en suffixmatching met prioriteiten;
+- lokale overrides;
+- BusyBox-compatibiliteit;
+- collectd- en collectorprocesdetectie;
+- documentatie en package-integratie;
+- behoud van lokale regels tijdens upgrades.
+
+Opgelost:
+- dubbele en verweesde collectors;
+- jq-afhankelijkheid van ontbrekende Oniguruma-regexondersteuning;
+- ongeldige classificatiestatus tijdens herclassificatie;
+- GNU-stat-afhankelijkheid in de selftest;
+- foutieve collectd-procestelling;
+- ongewenste SQLite busy-timeout-uitvoer.
