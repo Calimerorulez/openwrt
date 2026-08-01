@@ -1,0 +1,581 @@
+'use strict';
+'require view';
+'require rpc';
+'require poll';
+'require ui';
+
+var callOverview = rpc.declare({
+	object: 'dns-analytics',
+	method: 'overview',
+	expect: {}
+});
+
+var dashboardNodes = {};
+var refreshInProgress = false;
+var lastErrorMessage = null;
+
+function formatInteger(value) {
+	var number = Number(value);
+
+	if (!Number.isFinite(number))
+		return '—';
+
+	return number.toLocaleString();
+}
+
+function formatBytes(value) {
+	var bytes = Number(value);
+	var units = [ _('B'), _('KiB'), _('MiB'), _('GiB') ];
+	var index = 0;
+
+	if (!Number.isFinite(bytes) || bytes < 0)
+		return '—';
+
+	while (bytes >= 1024 && index < units.length - 1) {
+		bytes /= 1024;
+		index++;
+	}
+
+	return '%s %s'.format(
+		index === 0 ? bytes.toFixed(0) : bytes.toFixed(1),
+		units[index]
+	);
+}
+
+function formatAge(value) {
+	var seconds = Number(value);
+
+	if (!Number.isFinite(seconds) || seconds < 0)
+		return '—';
+
+	if (seconds < 60)
+		return N_(seconds, '%d seconde', '%d seconden').format(seconds);
+
+	var minutes = Math.floor(seconds / 60);
+	var remainder = seconds % 60;
+
+	if (minutes < 60)
+		return _('%d min %d sec').format(minutes, remainder);
+
+	var hours = Math.floor(minutes / 60);
+	minutes %= 60;
+
+	return _('%d uur %d min').format(hours, minutes);
+}
+
+function formatRefreshTime(date) {
+	if (!(date instanceof Date) || Number.isNaN(date.getTime()))
+		return '—';
+
+	return date.toLocaleTimeString();
+}
+
+function isTrue(value) {
+	return value === true || value === 1 || value === '1';
+}
+
+function setText(node, value) {
+	if (node)
+		node.textContent = value == null ? '—' : String(value);
+}
+
+function makeCard(title, description, key, extraClass) {
+	var valueNode = E('div', {
+		'class': 'dns-card-value'
+	}, '—');
+
+	dashboardNodes[key] = valueNode;
+
+	var card = E('div', {
+		'class': 'dns-card ' + (extraClass || '')
+	}, [
+		E('h3', {}, title),
+		valueNode,
+		E('p', {}, description)
+	]);
+
+	dashboardNodes[key + 'Card'] = card;
+
+	return card;
+}
+
+function makeStatusRow(title, key, options) {
+	options = options || {};
+
+	var valueNode = options.code
+		? E('code', {
+			'class': options.className || ''
+		}, '—')
+		: E('span', {
+			'class': options.className || ''
+		}, '—');
+
+	dashboardNodes[key] = valueNode;
+
+	return E('div', {
+		'class': 'dns-status-row'
+	}, [
+		E('strong', {}, title),
+		valueNode
+	]);
+}
+
+function updateBadge(node, healthy, healthyText, unhealthyText) {
+	if (!node)
+		return;
+
+	node.className = healthy
+		? 'label success dns-status'
+		: 'label danger dns-status';
+
+	node.textContent = healthy ? healthyText : unhealthyText;
+}
+
+function setRefreshState(active) {
+	refreshInProgress = active;
+
+	if (!dashboardNodes.refreshButton)
+		return;
+
+	dashboardNodes.refreshButton.disabled = active;
+	dashboardNodes.refreshButton.textContent = active
+		? _('Verversen…')
+		: _('Vernieuwen');
+}
+
+function clearError() {
+	if (dashboardNodes.errorBox)
+		dashboardNodes.errorBox.style.display = 'none';
+
+	lastErrorMessage = null;
+}
+
+function showError(message) {
+	message = message || _('De backend gaf geen geldige gegevens terug.');
+
+	if (dashboardNodes.errorText)
+		setText(dashboardNodes.errorText, message);
+
+	if (dashboardNodes.errorBox)
+		dashboardNodes.errorBox.style.display = '';
+
+	/*
+	 * Voorkom dat iedere poll dezelfde LuCI-notificatie toevoegt.
+	 */
+	if (message !== lastErrorMessage) {
+		ui.addNotification(null, E('p', {}, [
+			E('strong', {}, _('DNS Analytics: ')),
+			message
+		]), 'danger');
+
+		lastErrorMessage = message;
+	}
+}
+
+function validateOverview(data) {
+	if (!data)
+		throw new Error(_('De backend gaf geen gegevens terug.'));
+
+	if (data.error) {
+		var message = data.message || data.error;
+
+		if (data.exit_code != null)
+			message = _('%s (exitcode %s)').format(
+				message,
+				data.exit_code
+			);
+
+		throw new Error(message);
+	}
+
+	return data;
+}
+
+function updateDashboard(data) {
+	data = validateOverview(data);
+
+	var databaseAvailable = isTrue(data.database_exists);
+	var collectorConfigured = isTrue(data.collector_configured);
+	var collectorHealthy = isTrue(data.collector_healthy);
+	var pendingDomains = Number(data.pending_domains);
+
+	setText(dashboardNodes.totalQueries, formatInteger(data.total_queries));
+	setText(dashboardNodes.uniqueDomains, formatInteger(data.unique_domains));
+	setText(dashboardNodes.pendingDomains, formatInteger(data.pending_domains));
+	setText(dashboardNodes.enabledCategories, formatInteger(data.enabled_categories));
+
+	if (dashboardNodes.pendingDomainsCard) {
+		dashboardNodes.pendingDomainsCard.classList.toggle(
+			'attention',
+			Number.isFinite(pendingDomains) && pendingDomains > 0
+		);
+	}
+
+	updateBadge(
+		dashboardNodes.collectorHealthy,
+		collectorHealthy,
+		_('Actief'),
+		_('Niet actief')
+	);
+
+	updateBadge(
+		dashboardNodes.collectorConfigured,
+		collectorConfigured,
+		_('Aanwezig'),
+		_('Ontbreekt')
+	);
+
+	updateBadge(
+		dashboardNodes.databaseAvailable,
+		databaseAvailable,
+		_('Beschikbaar'),
+		_('Ontbreekt')
+	);
+
+	setText(
+		dashboardNodes.watermarkAge,
+		formatAge(data.watermark_age_seconds)
+	);
+
+	setText(
+		dashboardNodes.databaseSize,
+		formatBytes(data.database_size)
+	);
+
+	setText(dashboardNodes.watermark, data.watermark || '—');
+	setText(dashboardNodes.packageVersion, data.package_version || '—');
+	setText(dashboardNodes.applicationVersion, data.application_version || '—');
+	setText(dashboardNodes.schemaVersion, data.schema_version || '—');
+	setText(dashboardNodes.databasePath, data.database_path || '—');
+	setText(dashboardNodes.lastRefresh, formatRefreshTime(new Date()));
+
+	clearError();
+}
+
+function refreshDashboard() {
+	if (refreshInProgress)
+		return Promise.resolve();
+
+	setRefreshState(true);
+
+	return callOverview()
+		.then(function(data) {
+			updateDashboard(data);
+		})
+		.catch(function(error) {
+			showError(
+				error && error.message
+					? error.message
+					: String(error)
+			);
+		})
+		.finally(function() {
+			setRefreshState(false);
+		});
+}
+
+function buildDashboard() {
+	dashboardNodes = {};
+
+	dashboardNodes.errorText = E('span', {}, '');
+	dashboardNodes.errorBox = E('div', {
+		'class': 'alert-message error dns-error',
+		'style': 'display:none'
+	}, [
+		E('strong', {}, _('Verversen mislukt: ')),
+		dashboardNodes.errorText
+	]);
+
+	dashboardNodes.collectorHealthy = E('span', {
+		'class': 'label danger dns-status'
+	}, _('Onbekend'));
+
+	dashboardNodes.collectorConfigured = E('span', {
+		'class': 'label danger dns-status'
+	}, _('Onbekend'));
+
+	dashboardNodes.databaseAvailable = E('span', {
+		'class': 'label danger dns-status'
+	}, _('Onbekend'));
+
+	dashboardNodes.lastRefresh = E('span', {}, '—');
+
+	dashboardNodes.refreshButton = E('button', {
+		'class': 'cbi-button cbi-button-action',
+		'type': 'button',
+		'click': function(event) {
+			event.preventDefault();
+			refreshDashboard();
+		}
+	}, _('Vernieuwen'));
+
+	return E([], [
+		E('div', {
+			'class': 'dns-heading'
+		}, [
+			E('div', {}, [
+				E('h2', {}, _('DNS Analytics')),
+				E('div', {
+					'class': 'cbi-map-descr'
+				}, _(
+					'Actuele DNS-queryanalyse, classificatiestatus en systeeminformatie.'
+				))
+			]),
+
+			E('div', {
+				'class': 'dns-heading-actions'
+			}, [
+				E('span', {
+					'class': 'dns-last-refresh'
+				}, [
+					_('Laatst ververst: '),
+					dashboardNodes.lastRefresh
+				]),
+				dashboardNodes.refreshButton
+			])
+		]),
+
+		dashboardNodes.errorBox,
+
+		E('div', {
+			'class': 'dns-grid'
+		}, [
+			makeCard(
+				_('Queries'),
+				_('Totaal geregistreerde DNS-queries'),
+				'totalQueries'
+			),
+
+			makeCard(
+				_('Domeinen'),
+				_('Unieke geregistreerde domeinen'),
+				'uniqueDomains'
+			),
+
+			makeCard(
+				_('Nog beoordelen'),
+				_('Domeinen met classificatiestatus pending'),
+				'pendingDomains'
+			),
+
+			makeCard(
+				_('Categorieën'),
+				_('Ingeschakelde classificatiecategorieën'),
+				'enabledCategories'
+			)
+		]),
+
+		E('h3', {
+			'class': 'dns-section-title'
+		}, _('Systeemstatus')),
+
+		E('div', {
+			'class': 'dns-status-table'
+		}, [
+			E('div', {
+				'class': 'dns-status-row'
+			}, [
+				E('strong', {}, _('Collector')),
+				dashboardNodes.collectorHealthy
+			]),
+
+			E('div', {
+				'class': 'dns-status-row'
+			}, [
+				E('strong', {}, _('Collectorconfiguratie')),
+				dashboardNodes.collectorConfigured
+			]),
+
+			makeStatusRow(
+				_('Leeftijd watermark'),
+				'watermarkAge'
+			),
+
+			E('div', {
+				'class': 'dns-status-row'
+			}, [
+				E('strong', {}, _('Database')),
+				dashboardNodes.databaseAvailable
+			]),
+
+			makeStatusRow(
+				_('Databasegrootte'),
+				'databaseSize'
+			),
+
+			makeStatusRow(
+				_('Laatste query'),
+				'watermark',
+				{ code: true }
+			),
+
+			makeStatusRow(
+				_('Packageversie'),
+				'packageVersion',
+				{ code: true }
+			),
+
+			makeStatusRow(
+				_('Applicatieversie'),
+				'applicationVersion',
+				{ code: true }
+			),
+
+			makeStatusRow(
+				_('Schema-versie'),
+				'schemaVersion',
+				{ code: true }
+			),
+
+			makeStatusRow(
+				_('Databasepad'),
+				'databasePath',
+				{
+					code: true,
+					className: 'dns-path'
+				}
+			)
+		]),
+
+		E('style', {}, `
+			.dns-heading {
+				display: flex;
+				align-items: flex-start;
+				justify-content: space-between;
+				gap: 1rem;
+				flex-wrap: wrap;
+			}
+
+			.dns-heading h2 {
+				margin-top: 0;
+			}
+
+			.dns-heading-actions {
+				display: flex;
+				align-items: center;
+				justify-content: flex-end;
+				gap: 1rem;
+				flex-wrap: wrap;
+			}
+
+			.dns-last-refresh {
+				font-size: 0.9rem;
+				opacity: 0.75;
+			}
+
+			.dns-error {
+				margin-top: 1rem;
+			}
+
+			.dns-grid {
+				display: grid;
+				grid-template-columns:
+					repeat(auto-fit, minmax(210px, 1fr));
+				gap: 1rem;
+				margin-top: 1.5rem;
+			}
+
+			.dns-card {
+				border: 1px solid var(--border-color-medium, #d5d5d5);
+				border-radius: 6px;
+				padding: 1rem;
+				background: var(--background-color-high, #fff);
+				box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+			}
+
+			.dns-card.attention {
+				border-left: 4px solid #f0ad4e;
+			}
+
+			.dns-card h3 {
+				margin: 0 0 0.75rem;
+			}
+
+			.dns-card-value {
+				font-size: 2rem;
+				font-weight: 600;
+				line-height: 1.2;
+				margin-bottom: 0.5rem;
+				font-variant-numeric: tabular-nums;
+			}
+
+			.dns-card p {
+				margin: 0;
+				opacity: 0.75;
+			}
+
+			.dns-section-title {
+				margin-top: 2rem;
+			}
+
+			.dns-status-table {
+				border: 1px solid var(--border-color-medium, #d5d5d5);
+				border-radius: 6px;
+				overflow: hidden;
+			}
+
+			.dns-status-row {
+				display: grid;
+				grid-template-columns: minmax(160px, 240px) 1fr;
+				gap: 1rem;
+				align-items: center;
+				padding: 0.75rem 1rem;
+				border-bottom:
+					1px solid var(--border-color-low, #e8e8e8);
+			}
+
+			.dns-status-row:last-child {
+				border-bottom: 0;
+			}
+
+			.dns-status {
+				justify-self: start;
+			}
+
+			.dns-path {
+				overflow-wrap: anywhere;
+			}
+
+			@media (max-width: 600px) {
+				.dns-heading-actions {
+					width: 100%;
+					justify-content: space-between;
+				}
+
+				.dns-status-row {
+					grid-template-columns: 1fr;
+					gap: 0.25rem;
+				}
+			}
+		`)
+	]);
+}
+
+return view.extend({
+	load: function() {
+		return callOverview();
+	},
+
+	render: function(data) {
+		var dashboard = buildDashboard();
+
+		try {
+			updateDashboard(data);
+		}
+		catch (error) {
+			showError(
+				error && error.message
+					? error.message
+					: String(error)
+			);
+		}
+
+		poll.add(refreshDashboard, 10);
+
+		return dashboard;
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
+});

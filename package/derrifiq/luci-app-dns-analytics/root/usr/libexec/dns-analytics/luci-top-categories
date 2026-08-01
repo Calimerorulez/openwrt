@@ -1,0 +1,182 @@
+#!/bin/sh
+
+set -u
+
+DEFAULT_STATE_DIR="/etc/dns-analytics/data"
+DEFAULT_LIMIT=20
+MAX_LIMIT=100
+
+json_string() {
+	printf '%s' "$1" |
+		sed \
+			-e 's/\\/\\\\/g' \
+			-e 's/"/\\"/g' \
+			-e ':a;N;$!ba;s/\n/\\n/g'
+}
+
+json_number() {
+	case "${1:-}" in
+		''|*[!0-9]*)
+			printf '0'
+			;;
+		*)
+			printf '%s' "$1"
+			;;
+	esac
+}
+
+json_decimal() {
+	case "${1:-}" in
+		''|*[!0-9.]*)
+			printf '0'
+			;;
+		*)
+			printf '%s' "$1"
+			;;
+	esac
+}
+
+state_dir="$(
+	uci -q get dns-analytics.main.state_dir 2>/dev/null
+)"
+
+[ -n "$state_dir" ] || state_dir="$DEFAULT_STATE_DIR"
+
+DATABASE="$(
+	uci -q get dns-analytics.main.database 2>/dev/null
+)"
+
+[ -n "$DATABASE" ] || DATABASE="$state_dir/dns-analytics.sqlite"
+
+limit="$(
+	uci -q get dns-analytics.main.top_limit 2>/dev/null
+)"
+
+case "$limit" in
+	''|*[!0-9]*)
+		limit="$DEFAULT_LIMIT"
+		;;
+esac
+
+[ "$limit" -ge 1 ] || limit="$DEFAULT_LIMIT"
+[ "$limit" -le "$MAX_LIMIT" ] || limit="$MAX_LIMIT"
+
+[ -f "$DATABASE" ] || {
+	echo "Database ontbreekt: $DATABASE" >&2
+	exit 2
+}
+
+latest_day="$(
+	sqlite3 \
+		-batch \
+		-noheader \
+		"$DATABASE" \
+		"SELECT COALESCE(MAX(day), '')
+		 FROM daily_category_counts;" \
+		2>/dev/null |
+	sed -n '1p'
+)"
+
+[ -n "$latest_day" ] || {
+	printf '{'
+	printf '"generated_at":%s,' "$(date +%s)"
+	printf '"day":"",'
+	printf '"limit":%s,' "$(json_number "$limit")"
+	printf '"total_queries":0,'
+	printf '"rows":[]'
+	printf '}\n'
+	exit 0
+}
+
+total_queries="$(
+	sqlite3 \
+		-batch \
+		-noheader \
+		"$DATABASE" \
+		"SELECT COALESCE(SUM(query_count), 0)
+		 FROM daily_category_counts
+		 WHERE day = '$latest_day';" \
+		2>/dev/null |
+	sed -n '1p'
+)"
+
+total_queries="$(json_number "$total_queries")"
+
+tmp_file="$(
+	mktemp /tmp/dns-analytics-top-categories.XXXXXX
+)" || exit 2
+
+trap 'rm -f "$tmp_file"' EXIT INT TERM
+
+tab="$(printf '\t')"
+
+if ! sqlite3 \
+	-batch \
+	-noheader \
+	-separator "$tab" \
+	"$DATABASE" "
+SELECT
+	d.category_name,
+	COALESCE(d.query_count, 0),
+	CASE
+		WHEN $total_queries > 0
+		THEN ROUND(
+			(COALESCE(d.query_count, 0) * 100.0) / $total_queries,
+			1
+		)
+		ELSE 0
+	END,
+	COALESCE((
+		SELECT COUNT(*)
+		FROM domains AS dom
+		WHERE dom.category_id = d.category_id
+	), 0)
+FROM daily_category_counts AS d
+WHERE d.day = '$latest_day'
+ORDER BY
+	d.query_count DESC,
+	d.category_name COLLATE NOCASE ASC
+LIMIT $limit;
+" > "$tmp_file" 2>/dev/null
+then
+	echo "Top Categories-query mislukt" >&2
+	exit 2
+fi
+
+printf '{'
+printf '"generated_at":%s,' "$(date +%s)"
+printf '"day":"%s",' "$(json_string "$latest_day")"
+printf '"limit":%s,' "$(json_number "$limit")"
+printf '"total_queries":%s,' "$total_queries"
+printf '"rows":['
+
+first=1
+
+while IFS="$tab" read -r \
+	category \
+	query_count \
+	percentage \
+	domain_count
+do
+	[ -n "$category" ] || continue
+
+	if [ "$first" -eq 0 ]; then
+		printf ','
+	fi
+
+	first=0
+
+	printf '{'
+	printf '"category":"%s",' \
+		"$(json_string "$category")"
+	printf '"queries":%s,' \
+		"$(json_number "$query_count")"
+	printf '"percentage":%s,' \
+		"$(json_decimal "$percentage")"
+	printf '"domains":%s' \
+		"$(json_number "$domain_count")"
+	printf '}'
+done < "$tmp_file"
+
+printf ']'
+printf '}\n'

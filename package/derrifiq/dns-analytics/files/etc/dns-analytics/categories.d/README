@@ -1,0 +1,9 @@
+Plaats hier lokale TSV-bestanden:
+
+domein<TAB>categorie
+
+Voorbeeld:
+
+example.org	communication/forums
+
+Lokale vermeldingen hebben voorrang op ingebouwde en AI-classificaties.

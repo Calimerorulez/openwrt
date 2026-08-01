@@ -1,0 +1,10 @@
+#!/bin/sh
+# shellcheck source=/dev/null
+
+. /usr/libexec/dns-analytics/common.sh
+
+log_message "AI-classifier is nog niet actief in 2.0.0-alpha4"
+
+while :; do
+	sleep 3600
+done
