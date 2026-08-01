@@ -1,0 +1,93 @@
+#!/bin/sh
+# shellcheck source=/dev/null
+
+set -eu
+
+. /usr/libexec/dns-analytics/common.sh
+
+SQL_FILE="$RUNTIME_DIR/reclassify.$$"
+
+ensure_directory "$RUNTIME_DIR"
+
+cleanup() {
+        rm -f "$SQL_FILE"
+}
+
+trap cleanup EXIT INT TERM HUP
+
+cat > "$SQL_FILE" <<'SQL'
+PRAGMA foreign_keys = ON;
+PRAGMA busy_timeout = 5000;
+
+BEGIN IMMEDIATE;
+
+UPDATE domains
+SET
+    category_id = COALESCE(
+        (
+            SELECT dr.category_id
+            FROM domain_rules AS dr
+            WHERE dr.enabled = 1
+              AND (
+                    (dr.match_type = 'exact'
+                     AND domains.domain = dr.pattern)
+                 OR (dr.match_type = 'suffix'
+                     AND (
+                            domains.domain = dr.pattern
+                         OR domains.domain LIKE '%.' || dr.pattern
+                     ))
+              )
+            ORDER BY
+                dr.priority DESC,
+                CASE dr.match_type
+                    WHEN 'exact' THEN 2
+                    WHEN 'suffix' THEN 1
+                    ELSE 0
+                END DESC,
+                length(dr.pattern) DESC
+            LIMIT 1
+        ),
+        (
+            SELECT id
+            FROM categories
+            WHERE name = 'unknown'
+            LIMIT 1
+        )
+    ),
+    classification_status = CASE
+        WHEN EXISTS (
+            SELECT 1
+            FROM domain_rules AS dr
+            WHERE dr.enabled = 1
+              AND (
+                    (dr.match_type = 'exact'
+                     AND domains.domain = dr.pattern)
+                 OR (dr.match_type = 'suffix'
+                     AND (
+                            domains.domain = dr.pattern
+                         OR domains.domain LIKE '%.' || dr.pattern
+                     ))
+              )
+        )
+        THEN 'classified'
+        ELSE 'pending'
+    END,
+    updated_at = unixepoch()
+WHERE classification_status <> 'ignored';
+
+DELETE FROM classification_queue
+WHERE domain_id IN (
+    SELECT d.id
+    FROM domains AS d
+    JOIN categories AS c
+        ON c.id = d.category_id
+    WHERE c.name <> 'unknown'
+       OR d.classification_status = 'ignored'
+);
+
+COMMIT;
+SQL
+
+sqlite_file "$SQL_FILE" >/dev/null
+
+log_message "Bestaande domeinen opnieuw geclassificeerd"

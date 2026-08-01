@@ -1,0 +1,161 @@
+#!/bin/sh
+# shellcheck source=/dev/null
+
+set -eu
+
+. /usr/libexec/dns-analytics/common.sh
+
+BUILTIN_DIR="/usr/share/dns-analytics/categories.d"
+LOCAL_DIR="/etc/dns-analytics/categories.d"
+SQL_FILE="$RUNTIME_DIR/rules-sync.$$"
+
+ensure_directory "$RUNTIME_DIR"
+
+cleanup() {
+        rm -f "$SQL_FILE"
+}
+
+trap cleanup EXIT INT TERM HUP
+
+{
+        printf 'PRAGMA foreign_keys = ON;\n'
+        printf 'PRAGMA busy_timeout = 5000;\n'
+        printf 'BEGIN IMMEDIATE;\n'
+
+        printf "DELETE FROM domain_rules WHERE source IN ('builtin', 'local');\n"
+
+        for source_and_file in \
+                $(find "$BUILTIN_DIR" -type f -name '*.tsv' 2>/dev/null |
+                        sed 's#^#builtin:#') \
+                $(find "$LOCAL_DIR" -type f -name '*.tsv' 2>/dev/null |
+                        sed 's#^#local:#')
+        do
+                source="${source_and_file%%:*}"
+                file="${source_and_file#*:}"
+
+                while IFS="$(printf '\t')" read -r \
+                        pattern field2 field3 field4 _extra
+                do
+                        : "$_extra"
+                        case "$pattern" in
+                                ''|\#*)
+                                        continue
+                                        ;;
+                        esac
+
+                        case "$field2" in
+                                exact|suffix)
+                                        match_type="$field2"
+                                        category="$field3"
+                                        priority="$field4"
+                                        ;;
+                                *)
+                                        # Achterwaarts compatibel:
+                                        # pattern<TAB>category
+                                        match_type="suffix"
+                                        category="$field2"
+                                        priority=""
+                                        ;;
+                        esac
+
+                        [ -n "$category" ] || continue
+
+                        case "$pattern" in
+                                \*.*)
+                                        pattern="${pattern#*.}"
+                                        match_type="suffix"
+                                        ;;
+                        esac
+
+                        pattern="$(normalize_domain "$pattern")"
+                        [ -n "$pattern" ] || continue
+
+                        case "$match_type" in
+                                exact|suffix)
+                                        ;;
+                                *)
+                                        continue
+                                        ;;
+                        esac
+
+                        if [ -z "$priority" ]; then
+                                case "$source" in
+                                        local)
+                                                priority=1000
+                                                ;;
+                                        *)
+                                                priority=100
+                                                ;;
+                                esac
+                        fi
+
+                        priority="$(safe_integer "$priority" 0)"
+
+                        q_pattern="$(sql_quote "$pattern")"
+                        q_match_type="$(sql_quote "$match_type")"
+                        q_category="$(sql_quote "$category")"
+                        q_source="$(sql_quote "$source")"
+
+                        printf "
+INSERT INTO categories
+(
+    name,
+    display_name,
+    source,
+    enabled,
+    visible
+)
+VALUES
+(
+    '%s',
+    '%s',
+    '%s',
+    1,
+    1
+)
+ON CONFLICT(name) DO UPDATE SET
+    updated_at = unixepoch();
+
+INSERT INTO domain_rules
+(
+    pattern,
+    match_type,
+    category_id,
+    source,
+    priority,
+    enabled,
+    updated_at
+)
+SELECT
+    '%s',
+    '%s',
+    id,
+    '%s',
+    %s,
+    1,
+    unixepoch()
+FROM categories
+WHERE name = '%s'
+ON CONFLICT(pattern, match_type, source) DO UPDATE SET
+    category_id = excluded.category_id,
+    priority = excluded.priority,
+    enabled = excluded.enabled,
+    updated_at = unixepoch();
+" \
+                                "$q_category" \
+                                "$q_category" \
+                                "$q_source" \
+                                "$q_pattern" \
+                                "$q_match_type" \
+                                "$q_source" \
+                                "$priority" \
+                                "$q_category"
+                done < "$file"
+        done
+
+        printf 'COMMIT;\n'
+} > "$SQL_FILE"
+
+sqlite_file "$SQL_FILE" >/dev/null
+
+log_message "Categorieregels gesynchroniseerd"

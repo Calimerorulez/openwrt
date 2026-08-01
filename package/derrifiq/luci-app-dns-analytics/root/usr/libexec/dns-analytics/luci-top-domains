@@ -1,0 +1,131 @@
+#!/bin/sh
+
+set -u
+
+DEFAULT_STATE_DIR="/etc/dns-analytics/data"
+DEFAULT_LIMIT=20
+MAX_LIMIT=100
+
+json_string() {
+	printf '%s' "$1" |
+		sed \
+			-e 's/\\/\\\\/g' \
+			-e 's/"/\\"/g' \
+			-e ':a;N;$!ba;s/\n/\\n/g'
+}
+
+json_number() {
+	case "${1:-}" in
+		''|*[!0-9]*)
+			printf '0'
+			;;
+		*)
+			printf '%s' "$1"
+			;;
+	esac
+}
+
+state_dir="$(
+	uci -q get dns-analytics.main.state_dir 2>/dev/null
+)"
+
+[ -n "$state_dir" ] || state_dir="$DEFAULT_STATE_DIR"
+
+DATABASE="$(
+	uci -q get dns-analytics.main.database 2>/dev/null
+)"
+
+[ -n "$DATABASE" ] || DATABASE="$state_dir/dns-analytics.sqlite"
+
+limit="$(
+	uci -q get dns-analytics.main.top_limit 2>/dev/null
+)"
+
+case "$limit" in
+	''|*[!0-9]*)
+		limit="$DEFAULT_LIMIT"
+		;;
+esac
+
+[ "$limit" -ge 1 ] || limit="$DEFAULT_LIMIT"
+[ "$limit" -le "$MAX_LIMIT" ] || limit="$MAX_LIMIT"
+
+[ -f "$DATABASE" ] || {
+	echo "Database ontbreekt: $DATABASE" >&2
+	exit 2
+}
+
+tmp_file="$(
+	mktemp /tmp/dns-analytics-top-domains.XXXXXX
+)" || exit 2
+
+trap 'rm -f "$tmp_file"' EXIT INT TERM
+
+tab="$(printf '\t')"
+
+if ! sqlite3 \
+	-batch \
+	-noheader \
+	-separator "$tab" \
+	"$DATABASE" "
+SELECT
+	d.domain,
+	COALESCE(d.query_count, 0),
+	COALESCE(
+		NULLIF(TRIM(c.display_name), ''),
+		NULLIF(TRIM(c.name), ''),
+		'Onbekend'
+	),
+	COALESCE(d.classification_status, 'pending'),
+	COALESCE(d.last_seen, 0)
+FROM domains AS d
+LEFT JOIN categories AS c
+	ON c.id = d.category_id
+ORDER BY
+	d.query_count DESC,
+	d.domain COLLATE NOCASE ASC
+LIMIT $limit;
+" > "$tmp_file" 2>/dev/null
+then
+	echo "Top Domains-query mislukt" >&2
+	exit 2
+fi
+
+printf '{'
+printf '"generated_at":%s,' "$(date +%s)"
+printf '"limit":%s,' "$(json_number "$limit")"
+printf '"rows":['
+
+first=1
+
+while IFS="$tab" read -r \
+	domain \
+	query_count \
+	category \
+	classification_status \
+	last_seen
+do
+	[ -n "$domain" ] || continue
+
+	if [ "$first" -eq 0 ]; then
+		printf ','
+	fi
+
+	first=0
+
+	printf '{'
+	printf '"domain":"%s",' \
+		"$(json_string "$domain")"
+	printf '"queries":%s,' \
+		"$(json_number "$query_count")"
+	printf '"category":"%s",' \
+		"$(json_string "$category")"
+	printf '"classification_status":"%s",' \
+		"$(json_string "$classification_status")"
+	printf '"last_seen":%s' \
+		"$(json_number "$last_seen")"
+	printf '}'
+done < "$tmp_file"
+
+printf ']'
+printf '}\n'

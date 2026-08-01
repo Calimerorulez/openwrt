@@ -1,0 +1,102 @@
+#!/bin/sh
+
+set -u
+
+ERRORS=0
+
+ok() {
+    printf 'OK:   %s\n' "$*"
+}
+
+error() {
+    printf 'FOUT: %s\n' "$*"
+    ERRORS=$((ERRORS + 1))
+}
+
+printf 'DNS Analytics regressietest\n'
+printf '===========================\n\n'
+
+printf '=== VERSIE ===\n'
+
+if /usr/sbin/dns-analytics-review version; then
+    ok "versiecommando"
+else
+    error "versiecommando"
+fi
+
+printf '\n=== HELP ===\n'
+
+if /usr/sbin/dns-analytics-review --help >/dev/null 2>&1; then
+    ok "review-CLI help"
+else
+    error "review-CLI help"
+fi
+
+if /usr/sbin/dns-analytics-selftest --help >/dev/null 2>&1; then
+    ok "selftest help"
+else
+    error "selftest help"
+fi
+
+printf '\n=== REVIEW-CLI ===\n'
+
+if /usr/sbin/dns-analytics-review categories >/dev/null 2>&1; then
+    ok "categories"
+else
+    error "categories"
+fi
+
+if /usr/sbin/dns-analytics-review stats >/dev/null 2>&1; then
+    ok "stats"
+else
+    error "stats"
+fi
+
+if /usr/sbin/dns-analytics-review list 5 >/dev/null 2>&1; then
+    ok "list"
+else
+    error "list"
+fi
+
+printf '\n=== SELFTEST ===\n'
+
+if /usr/sbin/dns-analytics-selftest; then
+    ok "selftest"
+else
+    error "selftest"
+fi
+
+printf '\n=== WATERMARK ===\n'
+
+database="$(
+    uci -q get dns-analytics.main.database 2>/dev/null
+)"
+
+if [ -z "$database" ]; then
+    state_dir="$(
+        uci -q get dns-analytics.main.state_dir 2>/dev/null
+    )"
+
+    [ -n "$state_dir" ] || state_dir="/etc/dns-analytics/data"
+    database="$state_dir/dns-analytics.sqlite"
+fi
+
+watermark="$(
+    sqlite3 "$database" "
+SELECT value
+FROM metadata
+WHERE key = 'last_query_time'
+LIMIT 1;
+" 2>/dev/null
+)"
+
+if [ -n "$watermark" ]; then
+    ok "watermark aanwezig: $watermark"
+else
+    error "watermark ontbreekt"
+fi
+
+printf '\n=== RESULTAAT ===\n'
+printf 'Fouten: %s\n' "$ERRORS"
+
+[ "$ERRORS" -eq 0 ]
