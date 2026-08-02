@@ -116,7 +116,12 @@ if ! sqlite3 \
 	-separator "$tab" \
 	"$DATABASE" "
 SELECT
-	d.category_name,
+	COALESCE(
+		NULLIF(TRIM(c.display_name), ''),
+		NULLIF(TRIM(c.name), ''),
+		NULLIF(TRIM(d.category_name), ''),
+		'Onbekend'
+	),
 	COALESCE(d.query_count, 0),
 	CASE
 		WHEN $total_queries > 0
@@ -132,10 +137,12 @@ SELECT
 		WHERE dom.category_id = d.category_id
 	), 0)
 FROM daily_category_counts AS d
+LEFT JOIN categories AS c
+	ON c.id = d.category_id
 WHERE d.day = '$latest_day'
 ORDER BY
 	d.query_count DESC,
-	d.category_name COLLATE NOCASE ASC
+	1 COLLATE NOCASE ASC
 LIMIT $limit;
 " > "$tmp_file" 2>/dev/null
 then
