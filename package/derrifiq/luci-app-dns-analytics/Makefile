@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-dns-analytics
 PKG_VERSION:=2.3.0
-PKG_RELEASE:=4
+PKG_RELEASE:=5
 
 LUCI_TITLE:=LuCI interface for DNS Analytics
 LUCI_DEPENDS:=+luci-base +rpcd-mod-ucode +ucode-mod-fs +dns-analytics
