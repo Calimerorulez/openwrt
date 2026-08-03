@@ -13,7 +13,7 @@ define Package/dns-analytics
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=DNS Analytics for AdGuard Home and collectd
-  DEPENDS:=+curl +jq +jsonfilter +collectd-mod-exec +sqlite3-cli
+  DEPENDS:=+collectd +collectd-mod-exec +curl +jq +jsonfilter +sqlite3-cli
   PKGARCH:=all
 
 endef
