@@ -1,0 +1,63 @@
+#!/bin/sh /etc/rc.common
+# shellcheck disable=SC2034,SC3043
+
+START=78
+STOP=19
+USE_PROCD=1
+
+DB_INIT="/usr/libexec/dns-analytics/db-init"
+DB_SYNC_RULES="/usr/libexec/dns-analytics/db-sync-rules"
+CLASSIFIER="/usr/libexec/dns-analytics/classifier"
+
+prepare_directories() {
+	local state_dir runtime_dir
+
+	state_dir="$(uci -q get dns-analytics.main.state_dir)"
+	runtime_dir="$(uci -q get dns-analytics.main.runtime_dir)"
+
+	[ -n "$state_dir" ] || state_dir="/etc/dns-analytics/data"
+	[ -n "$runtime_dir" ] || runtime_dir="/tmp/dns-analytics"
+
+	mkdir -p "$state_dir" "$runtime_dir"
+
+	chown nobody:nogroup "$state_dir" "$runtime_dir"
+	chmod 0750 "$state_dir" "$runtime_dir"
+}
+
+start_service() {
+	local enabled classification_enabled
+
+	enabled="$(uci -q get dns-analytics.main.enabled)"
+	[ "$enabled" = "1" ] || return 0
+
+	prepare_directories
+
+	if ! "$DB_INIT"; then
+		logger -t dns-analytics -- "Database-initialisatie mislukt"
+		return 1
+	fi
+
+	if ! "$DB_SYNC_RULES"; then
+		logger -t dns-analytics -- "Synchronisatie van categorieregels mislukt"
+		return 1
+	fi
+
+	classification_enabled="$(
+		uci -q get dns-analytics.classification.enabled
+	)"
+
+	[ "$classification_enabled" = "1" ] || return 0
+
+	procd_open_instance classifier
+	procd_set_param command "$CLASSIFIER"
+	procd_set_param user nobody
+	procd_set_param group nogroup
+	procd_set_param respawn 3600 5 5
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_reload_trigger dns-analytics
+}

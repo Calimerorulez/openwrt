@@ -1,0 +1,17 @@
+{
+  "luci-app-dns-analytics": {
+    "description": "Grant read access to the DNS Analytics dashboard",
+    "read": {
+      "ubus": {
+        "dns-analytics": [
+          "overview",
+          "top-domains",
+          "top-categories"
+        ]
+      },
+      "uci": [
+        "dns-analytics"
+      ]
+    }
+  }
+}
