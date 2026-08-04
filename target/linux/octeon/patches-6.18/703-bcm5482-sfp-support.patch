@@ -1,3 +1,5 @@
+Index: b/drivers/net/phy/broadcom.c
+===================================================================
 --- a/drivers/net/phy/broadcom.c
 +++ b/drivers/net/phy/broadcom.c
 @@ -16,8 +16,10 @@
@@ -5,13 +7,13 @@
  #include <linux/module.h>
  #include <linux/phy.h>
 +#include <linux/sfp.h>
- #include <linux/pm_wakeup.h>
+ #include <linux/device.h>
  #include <linux/brcmphy.h>
 +#include <linux/ethtool.h>
  #include <linux/of.h>
  #include <linux/interrupt.h>
  #include <linux/irq.h>
-@@ -39,6 +41,10 @@ struct bcm54xx_phy_priv {
+@@ -36,6 +38,10 @@ struct bcm54xx_phy_priv {
  	int	wake_irq;
  	bool	wake_irq_enabled;
  	bool	brr_mode;
@@ -22,7 +24,7 @@
  };
  
  /* Link modes for BCM58411 PHY */
-@@ -54,6 +60,14 @@ static const int bcm54811_linkmodes[] =
+@@ -51,6 +57,14 @@ static const int bcm54811_linkmodes[] =
  	ETHTOOL_LINK_MODE_10baseT_Half_BIT
  };
  
@@ -37,7 +39,7 @@
  /* Long-Distance Signaling (BroadR-Reach mode aneg) relevant linkmode bits */
  static const int lds_br_bits[] = {
  	ETHTOOL_LINK_MODE_Autoneg_BIT,
-@@ -1424,6 +1438,253 @@ static int bcm54811_read_status(struct p
+@@ -1452,6 +1466,257 @@ static int bcm54811_read_status(struct p
  	return genphy_read_status(phydev);
  }
  
@@ -192,14 +194,18 @@
 +{
 +	struct phy_device *phydev = upstream;
 +	struct bcm54xx_phy_priv *priv = phydev->priv;
++	const struct sfp_module_caps *caps;
 +	__ETHTOOL_DECLARE_LINK_MODE_MASK(phy_supported) = { 0, };
 +	int err;
 +
 +	/* Update SFP PHY information */
-+	linkmode_zero(priv->sfp_supported);
-+	phy_interface_zero(priv->sfp_interfaces);
-+	sfp_parse_support(phydev->sfp_bus, id, priv->sfp_supported, priv->sfp_interfaces);
-+	priv->sfp_port = sfp_parse_port(phydev->sfp_bus, id, NULL);
++	caps = sfp_get_module_caps(phydev->sfp_bus);
++	if (!caps)
++		return -EINVAL;
++
++	linkmode_copy(priv->sfp_supported, caps->link_modes);
++	phy_interface_copy(priv->sfp_interfaces, caps->interfaces);
++	priv->sfp_port = caps->port;
 +
 +	/* Filter out link modes supported by the PHY */
 +	linkmode_set_bit_array(bcm5482_alt_serdes_linkmodes, ARRAY_SIZE(bcm5482_alt_serdes_linkmodes), phy_supported);
@@ -290,8 +296,8 @@
 +
  static struct phy_driver broadcom_drivers[] = {
  {
- 	.phy_id		= PHY_ID_BCM5411,
-@@ -1591,10 +1852,13 @@ static struct phy_driver broadcom_driver
+ 	PHY_ID_MATCH_MODEL(PHY_ID_BCM5411),
+@@ -1608,10 +1873,13 @@ static struct phy_driver broadcom_driver
  	.get_sset_count	= bcm_phy_get_sset_count,
  	.get_strings	= bcm_phy_get_strings,
  	.get_stats	= bcm54xx_get_stats,
@@ -307,9 +313,11 @@
  	.link_change_notify	= bcm54xx_link_change_notify,
  	.led_brightness_set	= bcm_phy_led_brightness_set,
  }, {
+Index: b/include/linux/brcmphy.h
+===================================================================
 --- a/include/linux/brcmphy.h
 +++ b/include/linux/brcmphy.h
-@@ -215,11 +215,19 @@
+@@ -222,11 +222,19 @@
  #define BCM54XX_SHD_LEDS1_LED3(src)	((src & 0xf) << 4)
  					/* LED1 / ~LINKSPD[1] selector */
  #define BCM54XX_SHD_LEDS1_LED1(src)	((src & 0xf) << 0)
@@ -334,6 +342,8 @@
  
  /* 10011: SerDes 100-FX Control Register */
  #define BCM54616S_SHD_100FX_CTRL	0x13
+Index: b/drivers/net/phy/bcm-phy-lib.c
+===================================================================
 --- a/drivers/net/phy/bcm-phy-lib.c
 +++ b/drivers/net/phy/bcm-phy-lib.c
 @@ -103,6 +103,27 @@ int bcm_phy_modify_exp(struct phy_device
@@ -389,6 +399,8 @@
  int __bcm_phy_read_rdb(struct phy_device *phydev, u16 rdb)
  {
  	int val;
+Index: b/drivers/net/phy/bcm-phy-lib.h
+===================================================================
 --- a/drivers/net/phy/bcm-phy-lib.h
 +++ b/drivers/net/phy/bcm-phy-lib.h
 @@ -33,9 +33,11 @@ struct ethtool_wolinfo;
