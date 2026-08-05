@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=derrifiq-feed-config
 PKG_VERSION:=1.1
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -32,5 +32,6 @@ define Package/derrifiq-feed-config/install
 		./files/derrifiq.list \
 		$(1)/etc/apk/repositories.d/derrifiq.list
 endef
+
 
 $(eval $(call BuildPackage,derrifiq-feed-config))
