@@ -1,0 +1,31 @@
+{
+	"luci-app-panici-dns": {
+		"description": "Manage Panici DNS device overrides",
+		"read": {
+			"cgi-io": [
+				"exec"
+			],
+			"file": {
+				"/etc/unbound/panici/devices.tsv": [
+					"read"
+				],
+				"/etc/unbound/panici/device-overrides.tsv": [
+					"read"
+				]
+			}
+		},
+		"write": {
+			"cgi-io": [
+				"exec"
+			],
+			"file": {
+				"/tmp/panici-device-overrides.tsv.new": [
+					"write"
+				],
+				"/usr/libexec/panici-dns-apply": [
+					"exec"
+				]
+			}
+		}
+	}
+}
