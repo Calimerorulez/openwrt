@@ -169,10 +169,7 @@ return view.extend({
 					macStatus = _('Globally administered');
 				}
 
-				var canonical = canonicalShort(
-					o.canonical ||
-					(d.canonical_source === 'override' ? d.canonical : '')
-				);
+				var canonical = canonicalShort(d.canonical);
 
 				var row = E('tr', {
 					'class': 'tr',
@@ -244,11 +241,7 @@ return view.extend({
 		var canonical = E('input', {
 			'class': 'cbi-input-text',
 			'type': 'text',
-			'value': existing.canonical || canonicalShort(
-				device.canonical_source === 'override'
-					? device.canonical
-					: device.suggested_name
-			)
+			'value': existing.canonical || ''
 		});
 
 		var description = E('input', {
@@ -303,7 +296,13 @@ return view.extend({
 				field(_('Vendor'), E('span', {}, display(device.oui))),
 				field(_('Fixed IP'), E('span', {}, display(device.fixed_ip))),
 				field(_('MAC type'), E('span', {}, display(device.mac_type))),
-				field(_('Canonical name'), canonical),
+				field(_('Current DNS canonical'), E('span', {},
+					display(canonicalShort(device.canonical)))),
+				field(_('Canonical source'), E('span', {},
+					display(device.canonical_source))),
+				field(_('Suggested name'), E('span', {},
+					display(device.suggested_name))),
+				field(_('Override canonical'), canonical),
 				field(_('Description'), description),
 				field(_('Room'), room),
 				field(_('Type'), type),
