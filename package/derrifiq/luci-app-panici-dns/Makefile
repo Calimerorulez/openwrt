@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-panici-dns
 PKG_VERSION:=1.2.4
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=Patrick
@@ -45,6 +45,8 @@ define Package/luci-app-panici-dns/install
 	$(INSTALL_DIR) $(1)/usr/libexec
 	$(INSTALL_BIN) ./root/usr/libexec/panici-dns-apply \
 		$(1)/usr/libexec/panici-dns-apply
+	$(INSTALL_BIN) ./root/usr/libexec/panici-managed-dns-apply \
+		$(1)/usr/libexec/panici-managed-dns-apply
 endef
 
 $(eval $(call BuildPackage,luci-app-panici-dns))
