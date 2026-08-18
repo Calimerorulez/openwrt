@@ -4,10 +4,34 @@ set -eu
 
 TMP="/tmp/panici-device-overrides.tsv.new"
 OUT="/etc/unbound/panici/device-overrides.tsv"
+BACKUP="/tmp/panici-device-overrides.tsv.backup.$$"
+MARKER="/tmp/panici-dns-apply.changed"
 
 fail() {
     echo "ERROR: $*" >&2
     exit 1
+}
+
+apply_dns() {
+    rm -f "$MARKER"
+
+    PANICI_BATCH=1 \
+    PANICI_CHANGE_MARKER="$MARKER" \
+        /usr/bin/udm-dns-sync.sh
+
+    /usr/bin/panici-device-registry-sync.sh
+
+    PANICI_BATCH=1 \
+    PANICI_CHANGE_MARKER="$MARKER" \
+        /usr/bin/panici-ptr-sync.sh
+
+    unbound-checkconf >/dev/null
+
+    if [ -f "$MARKER" ]; then
+        /etc/init.d/unbound reload
+    fi
+
+    rm -f "$MARKER"
 }
 
 [ -f "$TMP" ] || fail "temporary override file not found"
@@ -60,23 +84,21 @@ END {
 }
 ' "$TMP" || fail "validation failed"
 
-cp "$OUT" "$OUT.bak" 2>/dev/null || true
+[ ! -f "$OUT" ] || cp "$OUT" "$BACKUP"
 
-if ! mv "$TMP" "$OUT"; then
-    fail "could not install new override file"
-fi
+mv "$TMP" "$OUT" || fail "could not install override file"
 
-if ! /usr/bin/panici-dns-sync; then
-    echo "ERROR: DNS sync failed; restoring previous override file" >&2
+if ! apply_dns; then
+    echo "ERROR: DNS apply failed; restoring previous overrides" >&2
 
-    if [ -f "$OUT.bak" ]; then
-        mv "$OUT.bak" "$OUT"
-        /usr/bin/panici-dns-sync >/dev/null 2>&1 || true
+    if [ -f "$BACKUP" ]; then
+        mv "$BACKUP" "$OUT"
+        apply_dns >/dev/null 2>&1 || true
     fi
 
     exit 1
 fi
 
-rm -f "$OUT.bak"
+rm -f "$BACKUP"
 
 echo "OK"
