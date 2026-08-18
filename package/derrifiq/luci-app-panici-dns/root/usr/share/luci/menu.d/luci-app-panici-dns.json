@@ -1,0 +1,15 @@
+{
+	"admin/services/panici-dns": {
+		"title": "Panici DNS Devices",
+		"order": 90,
+		"action": {
+			"type": "view",
+			"path": "panici-dns/devices"
+		},
+		"depends": {
+			"acl": [
+				"luci-app-panici-dns"
+			]
+		}
+	}
+}

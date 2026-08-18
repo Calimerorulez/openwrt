@@ -1,0 +1,82 @@
+#!/bin/sh
+
+set -eu
+
+TMP="/tmp/panici-device-overrides.tsv.new"
+OUT="/etc/unbound/panici/device-overrides.tsv"
+
+fail() {
+    echo "ERROR: $*" >&2
+    exit 1
+}
+
+[ -f "$TMP" ] || fail "temporary override file not found"
+[ -s "$TMP" ] || fail "temporary override file is empty"
+
+HEADER=$(head -n 1 "$TMP")
+
+[ "$HEADER" = "$(printf 'mac\tcanonical\tdescription\troom\ttype\tidentity')" ] || \
+    fail "invalid TSV header"
+
+awk -F '\t' '
+BEGIN {
+    failed=0
+}
+
+NR == 1 {
+    next
+}
+
+{
+    if (NF != 6) {
+        printf "line %d: expected 6 columns, got %d\n", NR, NF > "/dev/stderr"
+        failed=1
+        next
+    }
+
+    mac=tolower($1)
+    canonical=$2
+
+    if (mac !~ /^[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]$/) {
+        printf "line %d: invalid MAC address\n", NR > "/dev/stderr"
+        failed=1
+    }
+
+    if (canonical == "" || canonical !~ /^[A-Za-z0-9][A-Za-z0-9-]*$/) {
+        printf "line %d: invalid canonical hostname\n", NR > "/dev/stderr"
+        failed=1
+    }
+
+    if (mac in seen) {
+        printf "line %d: duplicate MAC address\n", NR > "/dev/stderr"
+        failed=1
+    }
+
+    seen[mac]=1
+}
+
+END {
+    exit failed
+}
+' "$TMP" || fail "validation failed"
+
+cp "$OUT" "$OUT.bak" 2>/dev/null || true
+
+if ! mv "$TMP" "$OUT"; then
+    fail "could not install new override file"
+fi
+
+if ! /usr/bin/panici-dns-sync; then
+    echo "ERROR: DNS sync failed; restoring previous override file" >&2
+
+    if [ -f "$OUT.bak" ]; then
+        mv "$OUT.bak" "$OUT"
+        /usr/bin/panici-dns-sync >/dev/null 2>&1 || true
+    fi
+
+    exit 1
+fi
+
+rm -f "$OUT.bak"
+
+echo "OK"
