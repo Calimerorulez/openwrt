@@ -50,9 +50,9 @@ define Package/panici-dns/install
 	$(INSTALL_CONF) ./files/etc/unbound/panici/device-overrides.tsv \
 		$(1)/etc/unbound/panici/device-overrides.tsv
 
-        $(INSTALL_DIR) $(1)/etc/panici-dns
-        $(INSTALL_CONF) ./files/etc/panici-dns/device-identities.tsv \
-                $(1)/etc/panici-dns/device-identities.tsv
+	$(INSTALL_DIR) $(1)/etc/panici-dns
+	$(INSTALL_CONF) ./files/etc/panici-dns/device-identities.tsv \
+		$(1)/etc/panici-dns/device-identities.tsv
 endef
 
 $(eval $(call BuildPackage,panici-dns))
