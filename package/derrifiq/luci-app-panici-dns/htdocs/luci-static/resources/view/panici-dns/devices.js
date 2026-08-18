@@ -68,7 +68,38 @@ function canonicalShort(v) {
 }
 
 function display(v) {
-	return v && v !== '-' ? v : '—';
+        return v && v !== '-' ? v : '—';
+}
+
+function canonicalFQDN(v) {
+        var shortName = canonicalShort(v);
+
+        return shortName ? shortName + '.panici.casa' : '';
+}
+
+function deviceLabel(d) {
+        return canonicalShort(d.canonical) ||
+                (d.unifi_name && d.unifi_name !== '-' ? d.unifi_name : '') ||
+                (d.suggested_name && d.suggested_name !== '-' ? d.suggested_name : '') ||
+                (d.dhcp_hostname && d.dhcp_hostname !== '-' && d.dhcp_hostname !== '*' ? d.dhcp_hostname : '') ||
+                d.ip ||
+                d.mac ||
+                '';
+}
+
+function sourceLabel(v) {
+        switch (v) {
+        case 'override':
+                return _('Override');
+        case 'fixed-config':
+                return _('Fixed config');
+        case 'none':
+        case '':
+        case '-':
+                return _('None');
+        default:
+                return v;
+        }
 }
 
 function escapeSelector(v) {
@@ -145,6 +176,8 @@ return view.extend({
 					d.unifi_name,
 					d.suggested_name,
 					d.canonical,
+                                        canonicalFQDN(d.canonical),
+                                        deviceLabel(d),
 					d.oui,
 					o.description,
 					o.room,
@@ -168,22 +201,21 @@ return view.extend({
 				else {
 					macStatus = _('Globally administered');
 				}
+                                var fqdn = canonicalFQDN(d.canonical);
 
-				var canonical = canonicalShort(d.canonical);
-
-				var row = E('tr', {
-					'class': 'tr',
-					'style': 'cursor:pointer'
-				}, [
-					E('td', { 'class': 'td' }, display(d.mac)),
-					E('td', { 'class': 'td' }, display(d.ip)),
-					E('td', { 'class': 'td' }, display(d.unifi_name)),
-					E('td', { 'class': 'td' }, display(d.suggested_name)),
-					E('td', { 'class': 'td' }, display(canonical)),
-					E('td', { 'class': 'td' }, display(d.canonical_source)),
-					E('td', { 'class': 'td' }, display(d.oui)),
-					E('td', { 'class': 'td' }, macStatus)
-				]);
+                                var row = E('tr', {
+                                        'class': 'tr',
+                                        'style': 'cursor:pointer'
+                                }, [
+                                        E('td', { 'class': 'td' }, display(deviceLabel(d))),
+                                        E('td', { 'class': 'td' }, display(d.ip)),
+                                        E('td', { 'class': 'td' }, display(fqdn)),
+                                        E('td', { 'class': 'td' }, sourceLabel(d.canonical_source)),
+                                        E('td', { 'class': 'td' }, display(d.unifi_name)),
+                                        E('td', { 'class': 'td' }, display(d.oui)),
+                                        E('td', { 'class': 'td' }, display(d.mac)),
+                                        E('td', { 'class': 'td' }, macStatus)
+                                ]);
 
 				row.addEventListener('click', function() {
 					self.openEditor(d, overrides, renderTable);
@@ -202,31 +234,30 @@ return view.extend({
 		}, [
 			E('thead', {}, [
 				E('tr', { 'class': 'tr table-titles' }, [
-					E('th', { 'class': 'th' }, _('MAC')),
-					E('th', { 'class': 'th' }, _('IP')),
-					E('th', {
-					'class': 'th',
-					'title': _('Name stored for this client in UniFi Network.')
-				}, _('UniFi name')),
-					E('th', {
-					'class': 'th',
-					'title': _('Best automatically discovered name. This is only a suggestion until it becomes canonical.')
-				}, _('Suggested name')),
-					E('th', {
-					'class': 'th',
-					'title': _('Local DNS name currently used under panici.casa.')
-				}, _('Canonical')),
-					E('th', {
-					'class': 'th',
-					'title': _('Origin of the canonical name: manual override, fixed DNS configuration, or none.')
-				}, _('Source')),
-					E('th', { 'class': 'th' }, _('Vendor')),
-					E('th', {
-					'class': 'th',
-					'title': _('Whether the MAC is globally or locally administered. Locally administered does not automatically mean rotating.')
-				}, _('MAC status'))
-				])
-			]),
+                                        E('th', {
+                                                'class': 'th',
+                                                'title': _('Best recognizable name for this device.')
+                                        }, _('Device')),
+                                        E('th', { 'class': 'th' }, _('IP')),
+                                        E('th', {
+                                                'class': 'th',
+                                                'title': _('Fully qualified local DNS name currently published under panici.casa.')
+                                        }, _('FQDN')),
+                                        E('th', {
+                                                'class': 'th',
+                                                'title': _('Origin of the local DNS name.')
+                                        }, _('DNS source')),
+                                        E('th', {
+                                                'class': 'th',
+                                                'title': _('Name stored for this client in UniFi Network.')
+                                        }, _('UniFi name')),
+                                        E('th', { 'class': 'th' }, _('Vendor')),
+                                        E('th', { 'class': 'th' }, _('MAC')),
+                                        E('th', {
+                                                'class': 'th',
+                                                'title': _('Locally administered does not automatically mean rotating.')
+                                        }, _('MAC status'))
+                                ])			]),
 			tableBody
 		]);
 
@@ -236,38 +267,37 @@ return view.extend({
 			E('h2', {}, _('Panici DNS Devices')),
 
 			E('div', { 'class': 'cbi-map-descr' }, [
-				E('p', {}, [
-					_('This registry combines device information discovered from UniFi with local DNS configuration on Dobby. '),
-					_('Normally you do not need to change anything. Use an override only when you want a device to have a stable, recognizable local DNS name.')
-				]),
+                                E('p', {}, [
+                                        _('Panici DNS assigns stable local names under '),
+                                        E('strong', {}, 'panici.casa'),
+                                        _('. Device information is discovered automatically from UniFi. Click a device to assign or change its local DNS hostname.')
+                                ]),
 
-				E('p', {}, [
-					E('strong', {}, _('How it works: ')),
-					_('Suggested name is the best automatically discovered name. '),
-					_('Canonical is the name actually used for local DNS and reverse DNS (PTR). '),
-					_('An override lets you explicitly choose that canonical name.')
-				]),
+                                E('p', {}, [
+                                        E('strong', {}, _('FQDN: ')),
+                                        _('the complete local DNS name clients can use, for example '),
+                                        E('code', {}, 'hisense-tv.panici.casa'),
+                                        _('.')
+                                ]),
 
-				E('p', {}, [
-					E('strong', {}, _('Example: ')),
-					_('entering hisense-tv as an override creates hisense-tv.panici.casa and the corresponding PTR record.')
-				]),
+                                E('p', {}, [
+                                        E('strong', {}, _('DNS source: ')),
+                                        _('Override = manually managed here; Fixed config = existing local DNS configuration; None = no local DNS name is currently assigned.')
+                                ]),
 
-				E('p', {}, [
-					E('strong', {}, _('MAC address note: ')),
-					_('a locally administered MAC can be a fixed private address, rotating private address, virtual MAC or manually assigned MAC. '),
-					_('The registry therefore reports its stability as unknown instead of assuming that it is rotating.')
-				]),
+                                E('p', {}, [
+                                        E('strong', {}, _('Editing: ')),
+                                        _('enter only the hostname, for example '),
+                                        E('code', {}, 'hisense-tv'),
+                                        _('. The suffix '),
+                                        E('code', {}, '.panici.casa'),
+                                        _(' is added automatically. A and PTR records are synchronized together.')
+                                ])
+                        ]),
 
-				E('p', {}, [
-					E('strong', {}, _('Sources: ')),
-					_('override = manually managed here; fixed-config = existing static/local DNS configuration; none = no canonical DNS name is currently assigned.')
-				])
-			]),
-
-			E('div', {
-				'class': 'cbi-section',
-				'style': 'margin-bottom:1em'
+                        E('div', {
+                                'class': 'cbi-section',
+                                'style': 'margin-bottom:1em'
 			}, [
 				filterInput
 			]),
@@ -310,6 +340,18 @@ return view.extend({
 			'type': 'text',
 			'value': existing.identity || ''
 		});
+                var fqdnPreview = E('strong', {}, '');
+
+                function updateFQDNPreview() {
+                        var c = canonicalShort(canonical.value);
+
+                        fqdnPreview.textContent = c
+                                ? c + '.panici.casa'
+                                : _('No manual hostname entered');
+                }
+
+                canonical.addEventListener('input', updateFQDNPreview);
+                updateFQDNPreview();
 
 		function field(label, control) {
 			return E('div', {
@@ -331,37 +373,53 @@ return view.extend({
 		}
 
 		var body = E('div', {}, warnings.concat([
-			E('div', { 'class': 'cbi-map-descr' }, [
-				E('p', {}, [
-					_('Current DNS canonical shows what DNS uses now. '),
-					_('Override canonical is the value you manage here. Leave it empty unless you intentionally want to create or replace a manual override.')
-				]),
-				E('p', {}, [
-					_('Description, room, type and identity are local metadata for your registry and do not come from UniFi.')
-				])
-			]),
+                        E('div', { 'class': 'cbi-map-descr' }, [
+                                E('p', {}, [
+                                        _('Enter only the hostname below. The suffix '),
+                                        E('code', {}, '.panici.casa'),
+                                        _(' is added automatically.')
+                                ])
+                        ]),
 
-			E('div', { 'class': 'cbi-section' }, [
-				field(_('MAC'), E('span', {}, display(device.mac))),
-				field(_('IP'), E('span', {}, display(device.ip))),
-				field(_('UniFi name'), E('span', {}, display(device.unifi_name))),
-				field(_('DHCP hostname'), E('span', {}, display(device.dhcp_hostname))),
-				field(_('Vendor'), E('span', {}, display(device.oui))),
-				field(_('Fixed IP'), E('span', {}, display(device.fixed_ip))),
-				field(_('MAC type'), E('span', {}, display(device.mac_type))),
-				field(_('Current DNS canonical'), E('span', {},
-					display(canonicalShort(device.canonical)))),
-				field(_('Canonical source'), E('span', {},
-					display(device.canonical_source))),
-				field(_('Suggested name'), E('span', {},
-					display(device.suggested_name))),
-				field(_('Override canonical'), canonical),
-				field(_('Description'), description),
-				field(_('Room'), room),
-				field(_('Type'), type),
-				field(_('Identity'), identity)
-			])
-		]));
+                        E('h3', {}, _('Local DNS')),
+                        E('div', { 'class': 'cbi-section' }, [
+                                field(_('Current FQDN'), E('strong', {},
+                                        display(canonicalFQDN(device.canonical)))),
+                                field(_('DNS source'), E('span', {},
+                                        sourceLabel(device.canonical_source))),
+                                field(_('Suggested hostname'), E('span', {},
+                                        display(device.suggested_name))),
+                                field(_('Custom hostname'), E('div', {}, [
+                                        canonical,
+                                        E('div', { 'class': 'cbi-value-description' },
+                                                _('Hostname only; .panici.casa is added automatically.'))
+                                ])),
+                                field(_('Resulting FQDN'), fqdnPreview)
+                        ]),
+
+                        E('h3', {}, _('Device information')),
+                        E('div', { 'class': 'cbi-section' }, [
+                                field(_('Device'), E('span', {}, display(deviceLabel(device)))),
+                                field(_('IP'), E('span', {}, display(device.ip))),
+                                field(_('MAC'), E('span', {}, display(device.mac))),
+                                field(_('UniFi name'), E('span', {}, display(device.unifi_name))),
+                                field(_('DHCP hostname'), E('span', {}, display(device.dhcp_hostname))),
+                                field(_('Vendor'), E('span', {}, display(device.oui))),
+                                field(_('Fixed IP'), E('span', {}, display(device.fixed_ip))),
+                                field(_('MAC type'), E('span', {}, display(device.mac_type)))
+                        ]),
+
+                        E('h3', {}, _('Local metadata')),
+                        E('div', { 'class': 'cbi-map-descr' }, [
+                                E('p', {}, _('Optional local information. These fields are not written back to UniFi.'))
+                        ]),
+                        E('div', { 'class': 'cbi-section' }, [
+                                field(_('Description'), description),
+                                field(_('Room'), room),
+                                field(_('Type'), type),
+                                field(_('Identity'), identity)
+                        ])
+                ]));
 
 		var buttons = [
 			E('button', {
