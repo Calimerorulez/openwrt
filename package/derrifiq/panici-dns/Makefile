@@ -56,7 +56,7 @@ define Package/panici-dns/install
 	$(INSTALL_DIR) $(1)/etc/panici-dns
 	$(INSTALL_CONF) ./files/etc/panici-dns/device-identities.tsv \
 		$(1)/etc/panici-dns/device-identities.tsv
-		$(1)	$(INSTALL_CONF) ./files/etc/panici-dns/managed-records.tsv \
+	$(INSTALL_CONF) ./files/etc/panici-dns/managed-records.tsv \
 		$(1)/etc/panici-dns/managed-records.tsv
 endef
 
