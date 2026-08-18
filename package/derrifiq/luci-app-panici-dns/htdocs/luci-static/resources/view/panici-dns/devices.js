@@ -96,6 +96,8 @@ function sourceLabel(v) {
                 return _('Handmatig');
         case 'fixed-config':
                 return _('Vaste configuratie');
+        case 'automatic':
+                return _('Automatisch');
         case 'none':
         case '':
         case '-':
@@ -194,11 +196,19 @@ return view.extend({
                 function getSortValue(d, key) {
                         switch (key) {
                         case 'device':
-                                return cleanSortValue(deviceLabel(d));
+                                return cleanSortValue(
+                                        canonicalShort(d.canonical) ||
+                                        (d.suggested_name && d.suggested_name !== '-' ? d.suggested_name : '') ||
+                                        (d.unifi_name && d.unifi_name !== '-' ? d.unifi_name : '') ||
+                                        (d.dhcp_hostname && d.dhcp_hostname !== '-' && d.dhcp_hostname !== '*' ? d.dhcp_hostname : '')
+                                );
                         case 'ip':
                                 return ipv4SortValue(d.ip);
                         case 'fqdn':
-                                return cleanSortValue(canonicalFQDN(d.canonical));
+                                return cleanSortValue(
+                                        canonicalFQDN(d.canonical) ||
+                                        d.canonical_conflict
+                                );
                         case 'source':
                                 return cleanSortValue(sourceLabel(d.canonical_source));
                         case 'unifi':
@@ -294,6 +304,8 @@ return view.extend({
                                         d.suggested_name,
                                         d.canonical,
                                         canonicalFQDN(d.canonical),
+                                        d.canonical_conflict,
+                                        d.canonical_conflict_with,
                                         deviceLabel(d),
                                         d.oui,
                                         o.description,
@@ -326,6 +338,20 @@ return view.extend({
                                 }
 
                                 var fqdn = canonicalFQDN(d.canonical);
+                                var fqdnCell;
+
+                                if (d.canonical_conflict) {
+                                        fqdnCell = E('span', {
+                                                'title': _('Naamconflict met: ') +
+                                                        display(d.canonical_conflict_with)
+                                        }, [
+                                                '⚠ ',
+                                                d.canonical_conflict
+                                        ]);
+                                }
+                                else {
+                                        fqdnCell = display(fqdn);
+                                }
 
                                 var row = E('tr', {
                                         'class': 'tr',
@@ -333,7 +359,7 @@ return view.extend({
                                 }, [
                                         E('td', { 'class': 'td' }, display(deviceLabel(d))),
                                         E('td', { 'class': 'td' }, display(d.ip)),
-                                        E('td', { 'class': 'td' }, display(fqdn)),
+                                        E('td', { 'class': 'td' }, fqdnCell),
                                         E('td', { 'class': 'td' }, sourceLabel(d.canonical_source)),
                                         E('td', { 'class': 'td' }, display(d.unifi_name)),
                                         E('td', { 'class': 'td' }, display(d.oui)),
@@ -425,14 +451,14 @@ return view.extend({
 
                                 E('p', {}, [
                                         E('strong', {}, _('DNS-bron: ')),
-                                        _('Handmatig = hier ingesteld; Vaste configuratie = afkomstig uit bestaande lokale DNS-configuratie; Geen = het apparaat heeft momenteel geen lokale DNS-naam.')
+                                        _('Automatisch = Panici DNS heeft een geldige unieke voorgestelde naam toegewezen; Handmatig = hier ingesteld; Vaste configuratie = afkomstig uit bestaande lokale DNS-configuratie; Geen = er is momenteel geen lokale DNS-naam.')
                                 ]),
 
                                 E('p', {}, [
                                         E('strong', {}, _('Bewerken: ')),
                                         _('vul alleen de hostnaam in, bijvoorbeeld '),
                                         E('code', {}, 'hisense-tv'),
-                                        _('. The suffix '),
+                                        _('. Het achtervoegsel '),
                                         E('code', {}, '.panici.casa'),
                                         _(' wordt automatisch toegevoegd. Het A- en PTR-record worden samen bijgewerkt.')
                                 ])
@@ -496,6 +522,11 @@ return view.extend({
                                 fqdnPreview.textContent =
                                         current + ' (' + _('geen wijziging') + ')';
                         }
+                        else if (device.canonical_conflict) {
+                                fqdnPreview.textContent =
+                                        '⚠ ' + device.canonical_conflict +
+                                        ' — ' + _('naamconflict');
+                        }
                         else {
                                 fqdnPreview.textContent = _('Geen DNS-naam');
                         }
@@ -522,6 +553,20 @@ return view.extend({
 				_('Dit MAC-adres wordt lokaal beheerd. De stabiliteit kan niet automatisch worden bepaald; het kan een vast privé-adres, wisselend privé-adres, virtueel MAC-adres of handmatig ingesteld MAC-adres zijn.')
 			]));
 		}
+
+                if (device.canonical_conflict) {
+                        warnings.push(E('div', {
+                                'class': 'alert-message warning'
+                        }, [
+                                E('strong', {}, _('DNS-naamconflict: ')),
+                                device.canonical_conflict,
+                                E('br'),
+                                _('Deze naam wordt niet automatisch gepubliceerd. Conflicterende apparaten: '),
+                                E('code', {}, display(device.canonical_conflict_with)),
+                                E('br'),
+                                _('Kies hieronder desgewenst een unieke aangepaste hostnaam.')
+                        ]));
+                }
 
 		var body = E('div', {}, warnings.concat([
                         E('div', { 'class': 'cbi-map-descr' }, [
@@ -628,7 +673,7 @@ return view.extend({
 						E('p', {}, _('Handmatige instelling opgeslagen en DNS gesynchroniseerd.')));
 				});
 			})
-		}, _('Save & Apply')));
+		}, _('Opslaan & toepassen')));
 
 		ui.showModal(
 			_('Panici DNS-apparaat') + ' — ' + display(device.ip),

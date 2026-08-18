@@ -76,7 +76,16 @@ NR == 1 {
         failed=1
     }
 
+    canonical_key=tolower(canonical)
+
+    if (canonical_key in canonical_seen && canonical_seen[canonical_key] != mac) {
+        printf "line %d: canonical hostname %s is already used by %s\n", \
+            NR, canonical, canonical_seen[canonical_key] > "/dev/stderr"
+        failed=1
+    }
+
     seen[mac]=1
+    canonical_seen[canonical_key]=mac
 }
 
 END {
