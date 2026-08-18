@@ -31,6 +31,9 @@ define Package/luci-app-panici-dns/install
 	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/panici-dns/devices.js \
 		$(1)/www/luci-static/resources/view/panici-dns/devices.js
 
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/panici-dns/records.js \
+		$(1)/www/luci-static/resources/view/panici-dns/records.js
+
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
 	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/luci-app-panici-dns.json \
 		$(1)/usr/share/luci/menu.d/luci-app-panici-dns.json
