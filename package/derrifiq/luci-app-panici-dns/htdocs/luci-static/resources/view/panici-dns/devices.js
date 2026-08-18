@@ -60,11 +60,14 @@ function tsvSafe(v) {
 }
 
 function canonicalShort(v) {
-	v = v || '';
+        v = (v || '').trim();
 
-	return v
-		.replace(/\.$/, '')
-		.replace(/\.panici\.casa$/i, '');
+        if (!v || v === '-')
+                return '';
+
+        return v
+                .replace(/\.$/, '')
+                .replace(/\.panici\.casa$/i, '');
 }
 
 function display(v) {
@@ -79,8 +82,8 @@ function canonicalFQDN(v) {
 
 function deviceLabel(d) {
         return canonicalShort(d.canonical) ||
-                (d.unifi_name && d.unifi_name !== '-' ? d.unifi_name : '') ||
                 (d.suggested_name && d.suggested_name !== '-' ? d.suggested_name : '') ||
+                (d.unifi_name && d.unifi_name !== '-' ? d.unifi_name : '') ||
                 (d.dhcp_hostname && d.dhcp_hostname !== '-' && d.dhcp_hostname !== '*' ? d.dhcp_hostname : '') ||
                 d.ip ||
                 d.mac ||
@@ -90,13 +93,13 @@ function deviceLabel(d) {
 function sourceLabel(v) {
         switch (v) {
         case 'override':
-                return _('Override');
+                return _('Handmatig');
         case 'fixed-config':
-                return _('Fixed config');
+                return _('Vaste configuratie');
         case 'none':
         case '':
         case '-':
-                return _('None');
+                return _('Geen');
         default:
                 return v;
         }
@@ -155,7 +158,7 @@ return view.extend({
 		var filterInput = E('input', {
 			'class': 'cbi-input-text',
 			'type': 'text',
-			'placeholder': _('Filter by name, IP, MAC, vendor or room'),
+			'placeholder': _('Filter op naam, IP, MAC, fabrikant of ruimte'),
 			'style': 'width: 100%; max-width: 520px'
 		});
 
@@ -192,14 +195,14 @@ return view.extend({
 
 				if (d.mac_type === 'locally-administered') {
 					macStatus = E('span', {
-						'title': _('Locally administered MAC. This can be a fixed private address, rotating private address, virtual MAC or manually assigned MAC.')
+						'title': _('Lokaal beheerd MAC-adres. Dit kan een vast privé-adres, wisselend privé-adres, virtueel MAC-adres of handmatig ingesteld MAC-adres zijn.')
 					}, [
 						'⚠ ',
-						_('Stability unknown')
+						_('Stabiliteit onbekend')
 					]);
 				}
 				else {
-					macStatus = _('Globally administered');
+					macStatus = _('Globaal toegewezen');
 				}
                                 var fqdn = canonicalFQDN(d.canonical);
 
@@ -236,27 +239,27 @@ return view.extend({
 				E('tr', { 'class': 'tr table-titles' }, [
                                         E('th', {
                                                 'class': 'th',
-                                                'title': _('Best recognizable name for this device.')
-                                        }, _('Device')),
+                                                'title': _('Best herkenbare naam voor dit apparaat.')
+                                        }, _('Apparaat')),
                                         E('th', { 'class': 'th' }, _('IP')),
                                         E('th', {
                                                 'class': 'th',
-                                                'title': _('Fully qualified local DNS name currently published under panici.casa.')
+                                                'title': _('Volledige lokale DNS-naam die momenteel onder panici.casa wordt gepubliceerd.')
                                         }, _('FQDN')),
                                         E('th', {
                                                 'class': 'th',
-                                                'title': _('Origin of the local DNS name.')
-                                        }, _('DNS source')),
+                                                'title': _('Herkomst van de lokale DNS-naam.')
+                                        }, _('DNS-bron')),
                                         E('th', {
                                                 'class': 'th',
-                                                'title': _('Name stored for this client in UniFi Network.')
-                                        }, _('UniFi name')),
-                                        E('th', { 'class': 'th' }, _('Vendor')),
+                                                'title': _('Naam die voor deze client in UniFi Network is opgeslagen.')
+                                        }, _('UniFi-naam')),
+                                        E('th', { 'class': 'th' }, _('Fabrikant')),
                                         E('th', { 'class': 'th' }, _('MAC')),
                                         E('th', {
                                                 'class': 'th',
-                                                'title': _('Locally administered does not automatically mean rotating.')
-                                        }, _('MAC status'))
+                                                'title': _('Lokaal beheerd betekent niet automatisch dat het MAC-adres wisselt.')
+                                        }, _('MAC-status'))
                                 ])			]),
 			tableBody
 		]);
@@ -264,34 +267,34 @@ return view.extend({
 		renderTable('');
 
 		return E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, _('Panici DNS Devices')),
+			E('h2', {}, _('Panici DNS-apparaten')),
 
 			E('div', { 'class': 'cbi-map-descr' }, [
                                 E('p', {}, [
-                                        _('Panici DNS assigns stable local names under '),
+                                        _('Panici DNS kent apparaten stabiele lokale namen toe binnen '),
                                         E('strong', {}, 'panici.casa'),
-                                        _('. Device information is discovered automatically from UniFi. Click a device to assign or change its local DNS hostname.')
+                                        _('. Apparaatgegevens worden automatisch uit UniFi opgehaald. Klik op een apparaat om de lokale DNS-naam of aanvullende gegevens te wijzigen.')
                                 ]),
 
                                 E('p', {}, [
                                         E('strong', {}, _('FQDN: ')),
-                                        _('the complete local DNS name clients can use, for example '),
+                                        _('de volledige lokale DNS-naam die clients kunnen gebruiken, bijvoorbeeld '),
                                         E('code', {}, 'hisense-tv.panici.casa'),
                                         _('.')
                                 ]),
 
                                 E('p', {}, [
-                                        E('strong', {}, _('DNS source: ')),
-                                        _('Override = manually managed here; Fixed config = existing local DNS configuration; None = no local DNS name is currently assigned.')
+                                        E('strong', {}, _('DNS-bron: ')),
+                                        _('Handmatig = hier ingesteld; Vaste configuratie = afkomstig uit bestaande lokale DNS-configuratie; Geen = het apparaat heeft momenteel geen lokale DNS-naam.')
                                 ]),
 
                                 E('p', {}, [
-                                        E('strong', {}, _('Editing: ')),
-                                        _('enter only the hostname, for example '),
+                                        E('strong', {}, _('Bewerken: ')),
+                                        _('vul alleen de hostnaam in, bijvoorbeeld '),
                                         E('code', {}, 'hisense-tv'),
                                         _('. The suffix '),
                                         E('code', {}, '.panici.casa'),
-                                        _(' is added automatically. A and PTR records are synchronized together.')
+                                        _(' wordt automatisch toegevoegd. Het A- en PTR-record worden samen bijgewerkt.')
                                 ])
                         ]),
 
@@ -344,10 +347,17 @@ return view.extend({
 
                 function updateFQDNPreview() {
                         var c = canonicalShort(canonical.value);
+                        var current = canonicalFQDN(device.canonical);
 
-                        fqdnPreview.textContent = c
-                                ? c + '.panici.casa'
-                                : _('No manual hostname entered');
+                        if (c) {
+                                fqdnPreview.textContent = c + '.panici.casa';
+                        }
+                        else if (current) {
+                                fqdnPreview.textContent = current + ' (' + _('ongewijzigd') + ')';
+                        }
+                        else {
+                                fqdnPreview.textContent = _('Geen handmatige hostnaam ingesteld');
+                        }
                 }
 
                 canonical.addEventListener('input', updateFQDNPreview);
@@ -368,56 +378,56 @@ return view.extend({
 			warnings.push(E('div', {
 				'class': 'alert-message warning'
 			}, [
-				_('This MAC is locally administered. Its stability cannot be inferred automatically; it may be fixed private, rotating, virtual or manually assigned.')
+				_('Dit MAC-adres wordt lokaal beheerd. De stabiliteit kan niet automatisch worden bepaald; het kan een vast privé-adres, wisselend privé-adres, virtueel MAC-adres of handmatig ingesteld MAC-adres zijn.')
 			]));
 		}
 
 		var body = E('div', {}, warnings.concat([
                         E('div', { 'class': 'cbi-map-descr' }, [
                                 E('p', {}, [
-                                        _('Enter only the hostname below. The suffix '),
+                                        _('Vul hieronder alleen de hostnaam in. Het achtervoegsel '),
                                         E('code', {}, '.panici.casa'),
-                                        _(' is added automatically.')
+                                        _(' wordt automatisch toegevoegd.')
                                 ])
                         ]),
 
-                        E('h3', {}, _('Local DNS')),
+                        E('h3', {}, _('Lokale DNS')),
                         E('div', { 'class': 'cbi-section' }, [
-                                field(_('Current FQDN'), E('strong', {},
+                                field(_('Huidige FQDN'), E('strong', {},
                                         display(canonicalFQDN(device.canonical)))),
-                                field(_('DNS source'), E('span', {},
+                                field(_('DNS-bron'), E('span', {},
                                         sourceLabel(device.canonical_source))),
-                                field(_('Suggested hostname'), E('span', {},
+                                field(_('Voorgestelde hostnaam'), E('span', {},
                                         display(device.suggested_name))),
-                                field(_('Custom hostname'), E('div', {}, [
+                                field(_('Aangepaste hostnaam'), E('div', {}, [
                                         canonical,
                                         E('div', { 'class': 'cbi-value-description' },
-                                                _('Hostname only; .panici.casa is added automatically.'))
+                                                _('Alleen de hostnaam; .panici.casa wordt automatisch toegevoegd.'))
                                 ])),
-                                field(_('Resulting FQDN'), fqdnPreview)
+                                field(_('Resulterende FQDN'), fqdnPreview)
                         ]),
 
-                        E('h3', {}, _('Device information')),
+                        E('h3', {}, _('Apparaatgegevens')),
                         E('div', { 'class': 'cbi-section' }, [
-                                field(_('Device'), E('span', {}, display(deviceLabel(device)))),
+                                field(_('Apparaat'), E('span', {}, display(deviceLabel(device)))),
                                 field(_('IP'), E('span', {}, display(device.ip))),
                                 field(_('MAC'), E('span', {}, display(device.mac))),
-                                field(_('UniFi name'), E('span', {}, display(device.unifi_name))),
-                                field(_('DHCP hostname'), E('span', {}, display(device.dhcp_hostname))),
-                                field(_('Vendor'), E('span', {}, display(device.oui))),
-                                field(_('Fixed IP'), E('span', {}, display(device.fixed_ip))),
-                                field(_('MAC type'), E('span', {}, display(device.mac_type)))
+                                field(_('UniFi-naam'), E('span', {}, display(device.unifi_name))),
+                                field(_('DHCP-hostnaam'), E('span', {}, display(device.dhcp_hostname))),
+                                field(_('Fabrikant'), E('span', {}, display(device.oui))),
+                                field(_('Vast IP-adres'), E('span', {}, display(device.fixed_ip))),
+                                field(_('MAC-type'), E('span', {}, display(device.mac_type)))
                         ]),
 
-                        E('h3', {}, _('Local metadata')),
+                        E('h3', {}, _('Lokale metadata')),
                         E('div', { 'class': 'cbi-map-descr' }, [
-                                E('p', {}, _('Optional local information. These fields are not written back to UniFi.'))
+                                E('p', {}, _('Optionele lokale informatie. Deze velden worden niet teruggeschreven naar UniFi.'))
                         ]),
                         E('div', { 'class': 'cbi-section' }, [
-                                field(_('Description'), description),
-                                field(_('Room'), room),
+                                field(_('Beschrijving'), description),
+                                field(_('Ruimte'), room),
                                 field(_('Type'), type),
-                                field(_('Identity'), identity)
+                                field(_('Identiteit'), identity)
                         ])
                 ]));
 
@@ -427,7 +437,7 @@ return view.extend({
 				'click': ui.createHandlerFn(this, function() {
 					ui.hideModal();
 				})
-			}, _('Cancel'))
+			}, _('Annuleren'))
 		];
 
 		if (existing.canonical) {
@@ -439,10 +449,10 @@ return view.extend({
 						refreshTable('');
 						ui.hideModal();
 						ui.addNotification(null,
-							E('p', {}, _('Override removed and DNS synchronized.')));
+							E('p', {}, _('Handmatige instelling verwijderd en DNS gesynchroniseerd.')));
 					});
 				})
-			}, _('Remove override')));
+			}, _('Handmatige instelling verwijderen')));
 		}
 
 		buttons.push(E('button', {
@@ -452,7 +462,7 @@ return view.extend({
 
 				if (!/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(c)) {
 					ui.addNotification(null,
-						E('p', {}, _('Invalid canonical hostname.')),
+						E('p', {}, _('Ongeldige hostnaam.')),
 						'error');
 					return;
 				}
@@ -470,7 +480,7 @@ return view.extend({
 					refreshTable('');
 					ui.hideModal();
 					ui.addNotification(null,
-						E('p', {}, _('Override saved and DNS synchronized.')));
+						E('p', {}, _('Handmatige instelling opgeslagen en DNS gesynchroniseerd.')));
 				});
 			})
 		}, _('Save & Apply')));
@@ -498,14 +508,14 @@ return view.extend({
 				if (!res || res.code !== 0) {
 					var msg = res && (res.stderr || res.stdout)
 						? (res.stderr || res.stdout)
-						: _('Unknown apply error');
+						: _('Onbekende fout bij toepassen');
 
 					throw new Error(msg);
 				}
 			})
 			.catch(function(err) {
 				ui.addNotification(null,
-					E('p', {}, _('Could not apply override: ') + err.message),
+					E('p', {}, _('Handmatige instelling kon niet worden toegepast: ') + err.message),
 					'error');
 
 				throw err;
