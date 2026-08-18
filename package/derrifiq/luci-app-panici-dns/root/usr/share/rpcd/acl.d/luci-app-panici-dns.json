@@ -1,31 +1,49 @@
 {
-	"luci-app-panici-dns": {
-		"description": "Manage Panici DNS device overrides",
-		"read": {
-			"cgi-io": [
-				"exec"
-			],
-			"file": {
-				"/etc/unbound/panici/devices.tsv": [
-					"read"
-				],
-				"/etc/unbound/panici/device-overrides.tsv": [
-					"read"
-				]
-			}
-		},
-		"write": {
-			"cgi-io": [
-				"exec"
-			],
-			"file": {
-				"/tmp/panici-device-overrides.tsv.new": [
-					"write"
-				],
-				"/usr/libexec/panici-dns-apply": [
-					"exec"
-				]
-			}
-		}
-	}
+        "luci-app-panici-dns": {
+                "description": "Panici DNS beheren en actieve DNS-records bekijken",
+                "read": {
+                        "cgi-io": [
+                                "exec"
+                        ],
+                        "file": {
+                                "/etc/unbound/panici/devices.tsv": [
+                                        "read"
+                                ],
+                                "/etc/unbound/panici/device-overrides.tsv": [
+                                        "read"
+                                ],
+                                "/etc/unbound/panici/static.conf": [
+                                        "read"
+                                ],
+                                "/etc/unbound/panici/iot.conf": [
+                                        "read"
+                                ],
+                                "/etc/unbound/panici/lxc.conf": [
+                                        "read"
+                                ],
+                                "/etc/unbound/panici/dhcp.conf": [
+                                        "read"
+                                ],
+                                "/etc/unbound/panici/ptr-static.conf": [
+                                        "read"
+                                ],
+                                "/etc/panici-dns/device-identities.tsv": [
+                                        "read"
+                                ]
+                        }
+                },
+                "write": {
+                        "cgi-io": [
+                                "exec"
+                        ],
+                        "file": {
+                                "/tmp/panici-device-overrides.tsv.new": [
+                                        "write"
+                                ],
+                                "/usr/libexec/panici-dns-apply": [
+                                        "exec"
+                                ]
+                        }
+                }
+        }
 }

@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=panici-dns
-PKG_VERSION:=1.2.3
+PKG_VERSION:=1.2.4
 PKG_RELEASE:=1
 
 PKG_LICENSE:=MIT
@@ -26,6 +26,7 @@ endef
 
 define Package/panici-dns/conffiles
 /etc/unbound/panici/device-overrides.tsv
+/etc/panici-dns/device-identities.tsv
 endef
 
 define Build/Compile
@@ -48,6 +49,10 @@ define Package/panici-dns/install
 	$(INSTALL_DIR) $(1)/etc/unbound/panici
 	$(INSTALL_CONF) ./files/etc/unbound/panici/device-overrides.tsv \
 		$(1)/etc/unbound/panici/device-overrides.tsv
+
+        $(INSTALL_DIR) $(1)/etc/panici-dns
+        $(INSTALL_CONF) ./files/etc/panici-dns/device-identities.tsv \
+                $(1)/etc/panici-dns/device-identities.tsv
 endef
 
 $(eval $(call BuildPackage,panici-dns))

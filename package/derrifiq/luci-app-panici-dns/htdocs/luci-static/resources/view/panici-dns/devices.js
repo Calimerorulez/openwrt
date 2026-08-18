@@ -90,7 +90,10 @@ function deviceLabel(d) {
                 '';
 }
 
-function sourceLabel(v) {
+function sourceLabel(v, device) {
+        if (device && device.canonical_conflict)
+                return _('Conflict');
+
         switch (v) {
         case 'override':
                 return _('Handmatig');
@@ -105,6 +108,27 @@ function sourceLabel(v) {
         default:
                 return v;
         }
+}
+
+function identityInterfaces(device, groups) {
+        var identity = String(device.identity || '').trim();
+
+        if (!identity || !groups[identity] || groups[identity].length < 2)
+                return '';
+
+        return groups[identity]
+                .slice()
+                .sort(function(a, b) {
+                        return String(a.ip || '').localeCompare(
+                                String(b.ip || ''),
+                                undefined,
+                                { numeric: true }
+                        );
+                })
+                .map(function(d) {
+                        return (d.ip || '—') + ' / ' + (d.mac || '—');
+                })
+                .join('; ');
 }
 
 function escapeSelector(v) {
@@ -156,6 +180,19 @@ return view.extend({
 		var self = this;
 		var devices = parseTSV(data[0]);
 		var overrides = parseOverrides(data[1]);
+		var identityGroups = {};
+
+		devices.forEach(function(d) {
+		        var identity = String(d.identity || '').trim();
+
+		        if (!identity)
+		                return;
+
+		        if (!identityGroups[identity])
+		                identityGroups[identity] = [];
+
+		        identityGroups[identity].push(d);
+		});
 
 		var filterInput = E('input', {
 			'class': 'cbi-input-text',
@@ -210,7 +247,7 @@ return view.extend({
                                         d.canonical_conflict
                                 );
                         case 'source':
-                                return cleanSortValue(sourceLabel(d.canonical_source));
+                                return cleanSortValue(sourceLabel(d.canonical_source, d));
                         case 'unifi':
                                 return cleanSortValue(d.unifi_name);
                         case 'vendor':
@@ -360,7 +397,7 @@ return view.extend({
                                         E('td', { 'class': 'td' }, display(deviceLabel(d))),
                                         E('td', { 'class': 'td' }, display(d.ip)),
                                         E('td', { 'class': 'td' }, fqdnCell),
-                                        E('td', { 'class': 'td' }, sourceLabel(d.canonical_source)),
+                                        E('td', { 'class': 'td' }, sourceLabel(d.canonical_source, d)),
                                         E('td', { 'class': 'td' }, display(d.unifi_name)),
                                         E('td', { 'class': 'td' }, display(d.oui)),
                                         E('td', { 'class': 'td' }, display(d.mac)),
@@ -582,7 +619,7 @@ return view.extend({
                                 field(_('Huidige FQDN'), E('strong', {},
                                         display(canonicalFQDN(device.canonical)))),
                                 field(_('DNS-bron'), E('span', {},
-                                        sourceLabel(device.canonical_source))),
+                                        sourceLabel(device.canonical_source, device))),
                                 field(_('Voorgestelde hostnaam'), E('span', {},
                                         display(device.suggested_name))),
                                 field(_('Aangepaste hostnaam'), E('div', {}, [
@@ -610,6 +647,22 @@ return view.extend({
                         ]),
 
                         E('h3', {}, _('Lokale metadata')),
+                                device.identity
+                                        ? field(_('Identiteit'), E('strong', {},
+                                                display(device.identity)))
+                                        : '',
+                                identityInterfaces(device, identityGroups)
+                                        ? field(_('Interfaces in deze identiteit'), E('div', {},
+                                                identityInterfaces(device, identityGroups)
+                                                        .split('; ')
+                                                        .map(function(v) {
+                                                                return E('div', {
+                                                                        'style': 'font-family:monospace'
+                                                                }, v);
+                                                        })
+                                        ))
+                                        : '',
+
                         E('div', { 'class': 'cbi-map-descr' }, [
                                 E('p', {}, _('Optionele lokale informatie. Deze velden worden niet teruggeschreven naar UniFi.'))
                         ]),
