@@ -1,0 +1,67 @@
+#!/bin/sh
+
+set -u
+
+LOCK="/tmp/panici-dns-sync.lock"
+CHANGE_MARKER="/tmp/panici-dns-sync.changed"
+
+cleanup() {
+    rm -f "$CHANGE_MARKER"
+    rmdir "$LOCK" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+if ! mkdir "$LOCK" 2>/dev/null; then
+    echo "$(date '+%F %T') sync already running"
+    exit 0
+fi
+
+rm -f "$CHANGE_MARKER"
+
+export PANICI_BATCH=1
+export PANICI_CHANGE_MARKER="$CHANGE_MARKER"
+
+echo "$(date '+%F %T') === panici.casa DNS sync started ==="
+
+run() {
+    NAME="$1"
+    CMD="$2"
+
+    echo "$(date '+%F %T') [$NAME] starting"
+
+    if "$CMD"; then
+        echo "$(date '+%F %T') [$NAME] OK"
+    else
+        RC=$?
+        echo "$(date '+%F %T') [$NAME] FAILED (exit $RC)"
+        exit "$RC"
+    fi
+}
+
+run "PVE" /usr/bin/pve-dns-sync.sh
+run "UDM" /usr/bin/udm-dns-sync.sh
+run "REGISTRY" /usr/bin/panici-device-registry-sync.sh
+run "PTR" /usr/bin/panici-ptr-sync.sh
+
+echo "$(date '+%F %T') [CHECK] validating Unbound"
+
+if ! unbound-checkconf >/dev/null 2>&1; then
+    echo "$(date '+%F %T') [CHECK] FAILED: invalid Unbound configuration"
+    exit 1
+fi
+
+if [ -f "$CHANGE_MARKER" ]; then
+    echo "$(date '+%F %T') [UNBOUND] changes detected; reloading once"
+
+    if /etc/init.d/unbound reload; then
+        echo "$(date '+%F %T') [UNBOUND] reload OK"
+    else
+        RC=$?
+        echo "$(date '+%F %T') [UNBOUND] reload FAILED (exit $RC)"
+        exit "$RC"
+    fi
+else
+    echo "$(date '+%F %T') [UNBOUND] no DNS changes; reload not required"
+fi
+
+echo "$(date '+%F %T') === panici.casa DNS sync completed ==="

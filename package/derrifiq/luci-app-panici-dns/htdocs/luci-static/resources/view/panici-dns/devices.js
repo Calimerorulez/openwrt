@@ -204,12 +204,27 @@ return view.extend({
 				E('tr', { 'class': 'tr table-titles' }, [
 					E('th', { 'class': 'th' }, _('MAC')),
 					E('th', { 'class': 'th' }, _('IP')),
-					E('th', { 'class': 'th' }, _('UniFi name')),
-					E('th', { 'class': 'th' }, _('Suggested')),
-					E('th', { 'class': 'th' }, _('Canonical')),
-					E('th', { 'class': 'th' }, _('Source')),
+					E('th', {
+					'class': 'th',
+					'title': _('Name stored for this client in UniFi Network.')
+				}, _('UniFi name')),
+					E('th', {
+					'class': 'th',
+					'title': _('Best automatically discovered name. This is only a suggestion until it becomes canonical.')
+				}, _('Suggested name')),
+					E('th', {
+					'class': 'th',
+					'title': _('Local DNS name currently used under panici.casa.')
+				}, _('Canonical')),
+					E('th', {
+					'class': 'th',
+					'title': _('Origin of the canonical name: manual override, fixed DNS configuration, or none.')
+				}, _('Source')),
 					E('th', { 'class': 'th' }, _('Vendor')),
-					E('th', { 'class': 'th' }, _('MAC status'))
+					E('th', {
+					'class': 'th',
+					'title': _('Whether the MAC is globally or locally administered. Locally administered does not automatically mean rotating.')
+				}, _('MAC status'))
 				])
 			]),
 			tableBody
@@ -219,9 +234,37 @@ return view.extend({
 
 		return E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('Panici DNS Devices')),
+
 			E('div', { 'class': 'cbi-map-descr' }, [
-				_('UniFi discovery is read-only. Click a device to manage its local panici.casa override on Dobby.')
+				E('p', {}, [
+					_('This registry combines device information discovered from UniFi with local DNS configuration on Dobby. '),
+					_('Normally you do not need to change anything. Use an override only when you want a device to have a stable, recognizable local DNS name.')
+				]),
+
+				E('p', {}, [
+					E('strong', {}, _('How it works: ')),
+					_('Suggested name is the best automatically discovered name. '),
+					_('Canonical is the name actually used for local DNS and reverse DNS (PTR). '),
+					_('An override lets you explicitly choose that canonical name.')
+				]),
+
+				E('p', {}, [
+					E('strong', {}, _('Example: ')),
+					_('entering hisense-tv as an override creates hisense-tv.panici.casa and the corresponding PTR record.')
+				]),
+
+				E('p', {}, [
+					E('strong', {}, _('MAC address note: ')),
+					_('a locally administered MAC can be a fixed private address, rotating private address, virtual MAC or manually assigned MAC. '),
+					_('The registry therefore reports its stability as unknown instead of assuming that it is rotating.')
+				]),
+
+				E('p', {}, [
+					E('strong', {}, _('Sources: ')),
+					_('override = manually managed here; fixed-config = existing static/local DNS configuration; none = no canonical DNS name is currently assigned.')
+				])
 			]),
+
 			E('div', {
 				'class': 'cbi-section',
 				'style': 'margin-bottom:1em'
@@ -288,6 +331,16 @@ return view.extend({
 		}
 
 		var body = E('div', {}, warnings.concat([
+			E('div', { 'class': 'cbi-map-descr' }, [
+				E('p', {}, [
+					_('Current DNS canonical shows what DNS uses now. '),
+					_('Override canonical is the value you manage here. Leave it empty unless you intentionally want to create or replace a manual override.')
+				]),
+				E('p', {}, [
+					_('Description, room, type and identity are local metadata for your registry and do not come from UniFi.')
+				])
+			]),
+
 			E('div', { 'class': 'cbi-section' }, [
 				field(_('MAC'), E('span', {}, display(device.mac))),
 				field(_('IP'), E('span', {}, display(device.ip))),
