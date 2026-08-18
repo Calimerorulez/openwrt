@@ -29,6 +29,12 @@
                                 ],
                                 "/etc/panici-dns/device-identities.tsv": [
                                         "read"
+                                ],
+                                "/etc/panici-dns/managed-records.tsv": [
+                                        "read"
+                                ],
+                                "/etc/unbound/panici/managed.conf": [
+                                        "read"
                                 ]
                         }
                 },
@@ -41,6 +47,12 @@
                                         "write"
                                 ],
                                 "/usr/libexec/panici-dns-apply": [
+                                        "exec"
+                                ],
+                                "/tmp/panici-managed-records.tsv.new": [
+                                        "write"
+                                ],
+                                "/usr/libexec/panici-managed-dns-apply": [
                                         "exec"
                                 ]
                         }

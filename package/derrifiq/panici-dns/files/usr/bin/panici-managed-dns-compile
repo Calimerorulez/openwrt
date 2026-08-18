@@ -1,0 +1,279 @@
+#!/bin/sh
+
+set -eu
+
+SOURCE="${1:-/etc/panici-dns/managed-records.tsv}"
+OUTPUT="${2:-/etc/unbound/panici/managed.conf}"
+DIR="/etc/unbound/panici"
+
+EXTERNAL_A="/tmp/panici-managed-external-a.$$"
+EXTERNAL_PTR="/tmp/panici-managed-external-ptr.$$"
+TMP="${OUTPUT}.tmp.$$"
+
+cleanup() {
+    rm -f "$EXTERNAL_A" "$EXTERNAL_PTR" "$TMP"
+}
+trap cleanup EXIT INT TERM
+
+fail() {
+    echo "ERROR: $*" >&2
+    exit 1
+}
+
+[ -f "$SOURCE" ] || fail "source file not found: $SOURCE"
+
+HEADER=$(head -n 1 "$SOURCE")
+
+[ "$HEADER" = "$(printf 'id\tenabled\ttype\tname\tvalue\tptr\tdescription')" ] || \
+    fail "invalid managed-records.tsv header"
+
+: > "$EXTERNAL_A"
+: > "$EXTERNAL_PTR"
+
+#
+# Inventariseer bestaande records uit ALLE andere DNS generators.
+# managed.conf zelf wordt overgeslagen omdat dit de output van deze
+# managed database is.
+#
+for FILE in "$DIR"/*.conf; do
+    [ -f "$FILE" ] || continue
+
+    case "$FILE" in
+        "$DIR/managed.conf")
+            continue
+            ;;
+    esac
+
+    awk '
+    $1 == "local-data:" && $3 == "A" {
+        name=$2
+        ip=$4
+
+        sub(/^"/, "", name)
+        sub(/"$/, "", ip)
+        sub(/\.$/, "", name)
+
+        if (name != "" && ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)
+            print tolower(name) "\t" ip
+    }
+
+    $1 == "local-data-ptr:" {
+        ip=$2
+        name=$3
+
+        sub(/^"/, "", ip)
+        sub(/"$/, "", name)
+
+        if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && name != "")
+            print ip "\t" name > "/dev/stderr"
+    }
+    ' "$FILE" >> "$EXTERNAL_A" 2>> "$EXTERNAL_PTR"
+done
+
+sort -u "$EXTERNAL_A" -o "$EXTERNAL_A"
+sort -u "$EXTERNAL_PTR" -o "$EXTERNAL_PTR"
+
+{
+    echo "server:"
+    echo
+} > "$TMP"
+
+if ! awk -F '\t' \
+    -v OFS='\t' \
+    -v AFILE="$EXTERNAL_A" \
+    -v PTRFILE="$EXTERNAL_PTR" '
+BEGIN {
+    failed=0
+
+    while ((getline line < AFILE) > 0) {
+        n=split(line,a,"\t")
+
+        if (n >= 2)
+            external_a[tolower(a[1]) SUBSEP a[2]]=1
+    }
+    close(AFILE)
+
+    while ((getline line < PTRFILE) > 0) {
+        n=split(line,a,"\t")
+
+        if (n >= 2)
+            external_ptr[a[1]]=a[2]
+    }
+    close(PTRFILE)
+}
+
+NR == 1 {
+    for (i=1; i<=NF; i++) {
+        if ($i == "id")          idcol=i
+        else if ($i == "enabled") enabledcol=i
+        else if ($i == "type")    typecol=i
+        else if ($i == "name")    namecol=i
+        else if ($i == "value")   valuecol=i
+        else if ($i == "ptr")     ptrcol=i
+        else if ($i == "description") desccol=i
+    }
+
+    if (!idcol || !enabledcol || !typecol || !namecol ||
+        !valuecol || !ptrcol || !desccol) {
+        print "ERROR: required columns missing" > "/dev/stderr"
+        failed=1
+    }
+
+    next
+}
+
+{
+    if (failed)
+        next
+
+    if (NF != 7) {
+        printf "ERROR: line %d: expected 7 columns, got %d\n", NR, NF > "/dev/stderr"
+        failed=1
+        next
+    }
+
+    id=$idcol
+    enabled=tolower($enabledcol)
+    type=toupper($typecol)
+    name=tolower($namecol)
+    value=$valuecol
+    ptr=tolower($ptrcol)
+
+    sub(/\.$/, "", name)
+    sub(/\.panici\.casa$/, "", name)
+
+    if (id == "" || id !~ /^[A-Za-z0-9_-]+$/) {
+        printf "ERROR: line %d: invalid id\n", NR > "/dev/stderr"
+        failed=1
+        next
+    }
+
+    if (id in ids) {
+        printf "ERROR: line %d: duplicate id %s\n", NR, id > "/dev/stderr"
+        failed=1
+        next
+    }
+    ids[id]=1
+
+    if (enabled != "true" && enabled != "false") {
+        printf "ERROR: line %d: enabled must be true or false\n", NR > "/dev/stderr"
+        failed=1
+        next
+    }
+
+    if (type != "A") {
+        printf "ERROR: line %d: unsupported record type %s\n", NR, type > "/dev/stderr"
+        failed=1
+        next
+    }
+
+    if (name == "" || name !~ /^[a-z0-9][a-z0-9-]*$/ || length(name) > 63) {
+        printf "ERROR: line %d: invalid hostname\n", NR > "/dev/stderr"
+        failed=1
+        next
+    }
+
+    if (value !~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {
+        printf "ERROR: line %d: invalid IPv4 address\n", NR > "/dev/stderr"
+        failed=1
+        next
+    }
+
+    n=split(value,a,".")
+    if (n != 4 || a[1] < 0 || a[1] > 255 ||
+        a[2] < 0 || a[2] > 255 ||
+        a[3] < 0 || a[3] > 255 ||
+        a[4] < 0 || a[4] > 255) {
+        printf "ERROR: line %d: invalid IPv4 address\n", NR > "/dev/stderr"
+        failed=1
+        next
+    }
+
+    if (ptr != "true" && ptr != "false") {
+        printf "ERROR: line %d: ptr must be true or false\n", NR > "/dev/stderr"
+        failed=1
+        next
+    }
+
+    rr=name SUBSEP value
+
+    if (rr in managed_a) {
+        printf "ERROR: line %d: duplicate managed A record\n", NR > "/dev/stderr"
+        failed=1
+        next
+    }
+    managed_a[rr]=id
+
+    #
+    # Disabled records worden volledig gevalideerd, maar niet gepubliceerd.
+    #
+    if (enabled == "false")
+        next
+
+    fqdn=name ".panici.casa."
+
+    #
+    # Exact dezelfde A-record elders publiceren is niet nuttig:
+    # beheer dan de bestaande bron in plaats van een managed duplicate.
+    #
+    external_key=tolower(name ".panici.casa") SUBSEP value
+
+    if (external_key in external_a) {
+        printf \
+            "ERROR: line %d: A record %s -> %s already exists in another DNS source\n", \
+            NR, fqdn, value > "/dev/stderr"
+        failed=1
+        next
+    }
+
+    if (ptr == "true") {
+        if (value in external_ptr) {
+            printf \
+                "ERROR: line %d: IP %s already has PTR %s; disable PTR or choose another IP\n", \
+                NR, value, external_ptr[value] > "/dev/stderr"
+            failed=1
+            next
+        }
+
+        if (value in managed_ptr) {
+            printf \
+                "ERROR: line %d: IP %s already has managed PTR owner %s\n", \
+                NR, value, managed_ptr[value] > "/dev/stderr"
+            failed=1
+            next
+        }
+
+        managed_ptr[value]=fqdn
+    }
+
+    print "    local-data: \"" fqdn " A " value "\""
+
+    if (ptr == "true")
+        print "    local-data-ptr: \"" value " " fqdn "\""
+}
+
+END {
+    if (failed)
+        exit 2
+}
+' "$SOURCE" >> "$TMP"
+then
+    exit 1
+fi
+
+#
+# Valideer het gegenereerde fragment zelf.
+# Op een buildhost zonder unbound-checkconf wordt dit bewust overgeslagen;
+# op Dobby is de check verplicht.
+#
+if command -v unbound-checkconf >/dev/null 2>&1; then
+    if ! unbound-checkconf "$TMP" >/dev/null 2>&1; then
+        echo "ERROR: generated managed.conf is invalid" >&2
+        cat "$TMP" >&2
+        exit 1
+    fi
+fi
+
+mv "$TMP" "$OUTPUT"
+
+echo "OK: generated $OUTPUT"

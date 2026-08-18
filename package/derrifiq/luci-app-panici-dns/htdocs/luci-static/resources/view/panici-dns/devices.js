@@ -110,27 +110,6 @@ function sourceLabel(v, device) {
         }
 }
 
-function identityInterfaces(device, groups) {
-        var identity = String(device.identity || '').trim();
-
-        if (!identity || !groups[identity] || groups[identity].length < 2)
-                return '';
-
-        return groups[identity]
-                .slice()
-                .sort(function(a, b) {
-                        return String(a.ip || '').localeCompare(
-                                String(b.ip || ''),
-                                undefined,
-                                { numeric: true }
-                        );
-                })
-                .map(function(d) {
-                        return (d.ip || '—') + ' / ' + (d.mac || '—');
-                })
-                .join('; ');
-}
-
 function escapeSelector(v) {
 	return String(v).replace(/["\\]/g, '\\$&');
 }
@@ -180,19 +159,38 @@ return view.extend({
 		var self = this;
 		var devices = parseTSV(data[0]);
 		var overrides = parseOverrides(data[1]);
-		var identityGroups = {};
+                devices.forEach(function(d) {
+                        var identity = String(d.identity || '').trim();
 
-		devices.forEach(function(d) {
-		        var identity = String(d.identity || '').trim();
+                        if (!identity) {
+                                d._identity_interfaces = '';
+                                return;
+                        }
 
-		        if (!identity)
-		                return;
+                        d._identity_interfaces = devices
+                                .filter(function(x) {
+                                        return String(x.identity || '').trim() === identity;
+                                })
+                                .sort(function(a, b) {
+                                        return String(a.ip || '').localeCompare(
+                                                String(b.ip || ''),
+                                                undefined,
+                                                { numeric: true }
+                                        );
+                                })
+                                .map(function(x) {
+                                        return (x.ip || '—') + ' / ' + (x.mac || '—');
+                                })
+                                .join('; ');
 
-		        if (!identityGroups[identity])
-		                identityGroups[identity] = [];
+                        /*
+                         * Alleen als deze identity werkelijk meerdere
+                         * interfaces bevat, tonen we de groepsweergave.
+                         */
+                        if (d._identity_interfaces.indexOf('; ') < 0)
+                                d._identity_interfaces = '';
+                });
 
-		        identityGroups[identity].push(d);
-		});
 
 		var filterInput = E('input', {
 			'class': 'cbi-input-text',
@@ -405,7 +403,12 @@ return view.extend({
                                 ]);
 
                                 row.addEventListener('click', function() {
-                                        self.openEditor(d, overrides, renderTable);
+                                        self.openEditor(
+                                                d,
+                                                overrides,
+                                                renderTable,
+                                                d._identity_interfaces || ''
+                                        );
                                 });
 
                                 tableBody.appendChild(row);
@@ -513,7 +516,7 @@ return view.extend({
 		]);
 	},
 
-	openEditor: function(device, overrides, refreshTable) {
+	openEditor: function(device, overrides, refreshTable, identityInterfaceList) {
 		var mac = (device.mac || '').toLowerCase();
 		var existing = overrides[mac] || {};
 
@@ -651,9 +654,14 @@ return view.extend({
                                         ? field(_('Identiteit'), E('strong', {},
                                                 display(device.identity)))
                                         : '',
-                                identityInterfaces(device, identityGroups)
+                                device.identity_warning
+                                        ? field(_('Waarschuwing'), E('span', {
+                                                'style': 'font-weight:bold'
+                                        }, display(device.identity_warning)))
+                                        : '',
+                                identityInterfaceList
                                         ? field(_('Interfaces in deze identiteit'), E('div', {},
-                                                identityInterfaces(device, identityGroups)
+                                                identityInterfaceList
                                                         .split('; ')
                                                         .map(function(v) {
                                                                 return E('div', {
@@ -670,7 +678,7 @@ return view.extend({
                                 field(_('Beschrijving'), description),
                                 field(_('Ruimte'), room),
                                 field(_('Type'), type),
-                                field(_('Identiteit'), identity)
+                                field(_('Aangepaste identiteit'), identity)
                         ])
                 ]));
 

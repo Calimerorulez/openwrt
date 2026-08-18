@@ -1,0 +1,170 @@
+#!/bin/sh
+
+set -eu
+
+CANDIDATE_SOURCE="/tmp/panici-managed-records.tsv.new"
+LIVE_SOURCE="/etc/panici-dns/managed-records.tsv"
+
+CANDIDATE_CONF="/tmp/panici-managed.conf.candidate"
+LIVE_CONF="/etc/unbound/panici/managed.conf"
+
+VALIDATE_CONF="/tmp/panici-managed-unbound-validate.conf"
+
+SOURCE_BACKUP="/tmp/panici-managed-records.tsv.backup.$$"
+CONF_BACKUP="/tmp/panici-managed.conf.backup.$$"
+
+INCLUDE_FILE="/etc/unbound/unbound_ext.conf"
+INCLUDE_LINE='include: "/etc/unbound/panici/managed.conf"'
+
+HAD_SOURCE=0
+HAD_CONF=0
+INCLUDE_ADDED=0
+
+cleanup() {
+    rm -f \
+        "$CANDIDATE_CONF" \
+        "$VALIDATE_CONF" \
+        "$SOURCE_BACKUP" \
+        "$CONF_BACKUP"
+}
+trap cleanup EXIT INT TERM
+
+fail() {
+    echo "ERROR: $*" >&2
+    exit 1
+}
+
+remove_include() {
+    TMP_INCLUDE="/tmp/panici-managed-unbound-ext.$$"
+
+    grep -vxF "$INCLUDE_LINE" "$INCLUDE_FILE" > "$TMP_INCLUDE" || true
+    mv "$TMP_INCLUDE" "$INCLUDE_FILE"
+}
+
+rollback_live() {
+    echo "Rolling back managed DNS state..." >&2
+
+    if [ "$HAD_SOURCE" = "1" ]; then
+        cp "$SOURCE_BACKUP" "$LIVE_SOURCE"
+    else
+        rm -f "$LIVE_SOURCE"
+    fi
+
+    if [ "$HAD_CONF" = "1" ]; then
+        cp "$CONF_BACKUP" "$LIVE_CONF"
+    else
+        rm -f "$LIVE_CONF"
+    fi
+
+    if [ "$INCLUDE_ADDED" = "1" ]; then
+        remove_include
+    fi
+
+    #
+    # Probeer na rollback de vorige geldige runtime-state weer
+    # expliciet in te laden. Fouten hier veranderen de oorspronkelijke
+    # apply-fout niet in succes.
+    #
+    if unbound-checkconf >/dev/null 2>&1; then
+        /etc/init.d/unbound reload >/dev/null 2>&1 || true
+    fi
+}
+
+[ -f "$CANDIDATE_SOURCE" ] || fail "candidate source not found"
+[ -s "$CANDIDATE_SOURCE" ] || fail "candidate source is empty"
+[ -f "$INCLUDE_FILE" ] || fail "Unbound include file not found"
+
+mkdir -p /etc/panici-dns /etc/unbound/panici
+
+#
+# FASE 1
+#
+# Candidate volledig compileren. De live bron en live managed.conf
+# worden hier nog niet aangeraakt.
+#
+if ! /usr/bin/panici-managed-dns-compile \
+    "$CANDIDATE_SOURCE" \
+    "$CANDIDATE_CONF"
+then
+    fail "candidate DNS compilation failed"
+fi
+
+#
+# FASE 2
+#
+# Valideer de complete Panici-configset met de candidate managed.conf
+# in plaats van de eventuele huidige managed.conf.
+#
+{
+    for FILE in /etc/unbound/panici/*.conf; do
+        [ -f "$FILE" ] || continue
+
+        case "$FILE" in
+            "$LIVE_CONF")
+                continue
+                ;;
+        esac
+
+        printf 'include: "%s"\n' "$FILE"
+    done
+
+    printf 'include: "%s"\n' "$CANDIDATE_CONF"
+} > "$VALIDATE_CONF"
+
+if ! unbound-checkconf "$VALIDATE_CONF" >/dev/null 2>&1; then
+    echo "ERROR: complete candidate Unbound configuration is invalid" >&2
+    unbound-checkconf "$VALIDATE_CONF" >&2 || true
+    exit 1
+fi
+
+#
+# FASE 3
+#
+# Vanaf hier pas live-state wijzigen. Eerst exact vastleggen wat er
+# vóór de transactie bestond.
+#
+if [ -f "$LIVE_SOURCE" ]; then
+    HAD_SOURCE=1
+    cp "$LIVE_SOURCE" "$SOURCE_BACKUP"
+fi
+
+if [ -f "$LIVE_CONF" ]; then
+    HAD_CONF=1
+    cp "$LIVE_CONF" "$CONF_BACKUP"
+fi
+
+cp "$CANDIDATE_SOURCE" "${LIVE_SOURCE}.new"
+cp "$CANDIDATE_CONF" "${LIVE_CONF}.new"
+
+mv "${LIVE_SOURCE}.new" "$LIVE_SOURCE"
+mv "${LIVE_CONF}.new" "$LIVE_CONF"
+
+#
+# Include pas toevoegen nadat beide live bestanden zijn geïnstalleerd.
+#
+if ! grep -qxF "$INCLUDE_LINE" "$INCLUDE_FILE"; then
+    printf '%s\n' "$INCLUDE_LINE" >> "$INCLUDE_FILE"
+    INCLUDE_ADDED=1
+fi
+
+#
+# Defensieve validatie van de echte complete Unbound-config.
+#
+if ! unbound-checkconf >/dev/null 2>&1; then
+    echo "ERROR: live Unbound configuration failed after commit" >&2
+    rollback_live
+    exit 1
+fi
+
+#
+# Ook een reload-fout maakt de transactie ongeldig.
+#
+if ! /etc/init.d/unbound reload; then
+    echo "ERROR: Unbound reload failed" >&2
+    rollback_live
+    exit 1
+fi
+
+rm -f "$CANDIDATE_SOURCE"
+
+echo "OK"
