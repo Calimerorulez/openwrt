@@ -162,48 +162,169 @@ return view.extend({
 			'style': 'width: 100%; max-width: 520px'
 		});
 
-		var tableBody = E('tbody');
+                var tableBody = E('tbody');
+                var sortKey = 'device';
+                var sortDir = 1;
+                var sortHeaders = {};
 
-		function renderTable(filter) {
-			var q = String(filter || '').toLowerCase();
+                function cleanSortValue(v) {
+                        v = String(v || '').trim();
 
-			tableBody.innerHTML = '';
+                        if (!v || v === '-' || v === '—' || v === '*')
+                                return '';
 
-			devices.forEach(function(d) {
-				var mac = (d.mac || '').toLowerCase();
-				var o = overrides[mac] || {};
+                        return v;
+                }
 
-				var haystack = [
-					d.mac,
-					d.ip,
-					d.unifi_name,
-					d.suggested_name,
-					d.canonical,
+                function ipv4SortValue(v) {
+                        v = cleanSortValue(v);
+
+                        if (!v)
+                                return '';
+
+                        if (/^\d+\.\d+\.\d+\.\d+$/.test(v)) {
+                                return v.split('.').map(function(part) {
+                                        return ('000' + Number(part)).slice(-3);
+                                }).join('.');
+                        }
+
+                        return v.toLowerCase();
+                }
+
+                function getSortValue(d, key) {
+                        switch (key) {
+                        case 'device':
+                                return cleanSortValue(deviceLabel(d));
+                        case 'ip':
+                                return ipv4SortValue(d.ip);
+                        case 'fqdn':
+                                return cleanSortValue(canonicalFQDN(d.canonical));
+                        case 'source':
+                                return cleanSortValue(sourceLabel(d.canonical_source));
+                        case 'unifi':
+                                return cleanSortValue(d.unifi_name);
+                        case 'vendor':
+                                return cleanSortValue(d.oui);
+                        case 'mac':
+                                return cleanSortValue(d.mac);
+                        case 'macstatus':
+                                if (d.mac_type === 'locally-administered')
+                                        return _('Lokaal beheerd');
+                                if (d.mac_type === 'globally-administered')
+                                        return _('Globaal toegewezen');
+                                return cleanSortValue(d.mac_type);
+                        default:
+                                return '';
+                        }
+                }
+
+                function compareDevices(a, b) {
+                        var av = getSortValue(a, sortKey);
+                        var bv = getSortValue(b, sortKey);
+
+                        /* Onbekende/lege waarden altijd onderaan. */
+                        if (!av && !bv)
+                                return 0;
+                        if (!av)
+                                return 1;
+                        if (!bv)
+                                return -1;
+
+                        var result = String(av).localeCompare(String(bv), 'nl', {
+                                numeric: true,
+                                sensitivity: 'base'
+                        });
+
+                        return result * sortDir;
+                }
+
+                function updateSortHeaders() {
+                        Object.keys(sortHeaders).forEach(function(key) {
+                                sortHeaders[key].textContent =
+                                        key === sortKey
+                                                ? (sortDir > 0 ? ' ▲' : ' ▼')
+                                                : '';
+                        });
+                }
+
+                function makeSortHeader(label, key, title) {
+                        var indicator = E('span', {}, '');
+
+                        sortHeaders[key] = indicator;
+
+                        var th = E('th', {
+                                'class': 'th',
+                                'style': 'cursor:pointer; user-select:none',
+                                'title': title
+                        }, [
+                                label,
+                                indicator
+                        ]);
+
+                        th.addEventListener('click', function(ev) {
+                                ev.stopPropagation();
+
+                                if (sortKey === key)
+                                        sortDir = -sortDir;
+                                else {
+                                        sortKey = key;
+                                        sortDir = 1;
+                                }
+
+                                updateSortHeaders();
+                                renderTable(filterInput.value);
+                        });
+
+                        return th;
+                }
+
+                function renderTable(filter) {
+                        var q = String(filter || '').toLowerCase();
+
+                        tableBody.innerHTML = '';
+
+                        var visible = devices.filter(function(d) {
+                                var mac = (d.mac || '').toLowerCase();
+                                var o = overrides[mac] || {};
+
+                                var haystack = [
+                                        d.mac,
+                                        d.ip,
+                                        d.unifi_name,
+                                        d.suggested_name,
+                                        d.canonical,
                                         canonicalFQDN(d.canonical),
                                         deviceLabel(d),
-					d.oui,
-					o.description,
-					o.room,
-					o.type,
-					o.identity
-				].join(' ').toLowerCase();
+                                        d.oui,
+                                        o.description,
+                                        o.room,
+                                        o.type,
+                                        o.identity
+                                ].join(' ').toLowerCase();
 
-				if (q && haystack.indexOf(q) < 0)
-					return;
+                                return !q || haystack.indexOf(q) >= 0;
+                        });
 
-				var macStatus;
+                        visible.sort(compareDevices);
 
-				if (d.mac_type === 'locally-administered') {
-					macStatus = E('span', {
-						'title': _('Lokaal beheerd MAC-adres. Dit kan een vast privé-adres, wisselend privé-adres, virtueel MAC-adres of handmatig ingesteld MAC-adres zijn.')
-					}, [
-						'⚠ ',
-						_('Stabiliteit onbekend')
-					]);
-				}
-				else {
-					macStatus = _('Globaal toegewezen');
-				}
+                        visible.forEach(function(d) {
+                                var macStatus;
+
+                                if (d.mac_type === 'locally-administered') {
+                                        macStatus = E('span', {
+                                                'title': _('Lokaal beheerd MAC-adres. Dit kan een vast privé-adres, wisselend privé-adres, virtueel MAC-adres of handmatig ingesteld MAC-adres zijn.')
+                                        }, [
+                                                '⚠ ',
+                                                _('Stabiliteit onbekend')
+                                        ]);
+                                }
+                                else if (d.mac_type === 'globally-administered') {
+                                        macStatus = _('Globaal toegewezen');
+                                }
+                                else {
+                                        macStatus = display(d.mac_type);
+                                }
+
                                 var fqdn = canonicalFQDN(d.canonical);
 
                                 var row = E('tr', {
@@ -220,51 +341,70 @@ return view.extend({
                                         E('td', { 'class': 'td' }, macStatus)
                                 ]);
 
-				row.addEventListener('click', function() {
-					self.openEditor(d, overrides, renderTable);
-				});
+                                row.addEventListener('click', function() {
+                                        self.openEditor(d, overrides, renderTable);
+                                });
 
-				tableBody.appendChild(row);
-			});
-		}
+                                tableBody.appendChild(row);
+                        });
+                }
 
-		filterInput.addEventListener('input', function(ev) {
-			renderTable(ev.target.value);
-		});
+                filterInput.addEventListener('input', function(ev) {
+                        renderTable(ev.target.value);
+                });
 
-		var table = E('table', {
-			'class': 'table'
-		}, [
-			E('thead', {}, [
-				E('tr', { 'class': 'tr table-titles' }, [
-                                        E('th', {
-                                                'class': 'th',
-                                                'title': _('Best herkenbare naam voor dit apparaat.')
-                                        }, _('Apparaat')),
-                                        E('th', { 'class': 'th' }, _('IP')),
-                                        E('th', {
-                                                'class': 'th',
-                                                'title': _('Volledige lokale DNS-naam die momenteel onder panici.casa wordt gepubliceerd.')
-                                        }, _('FQDN')),
-                                        E('th', {
-                                                'class': 'th',
-                                                'title': _('Herkomst van de lokale DNS-naam.')
-                                        }, _('DNS-bron')),
-                                        E('th', {
-                                                'class': 'th',
-                                                'title': _('Naam die voor deze client in UniFi Network is opgeslagen.')
-                                        }, _('UniFi-naam')),
-                                        E('th', { 'class': 'th' }, _('Fabrikant')),
-                                        E('th', { 'class': 'th' }, _('MAC')),
-                                        E('th', {
-                                                'class': 'th',
-                                                'title': _('Lokaal beheerd betekent niet automatisch dat het MAC-adres wisselt.')
-                                        }, _('MAC-status'))
-                                ])			]),
-			tableBody
-		]);
+                var table = E('table', {
+                        'class': 'table'
+                }, [
+                        E('thead', {}, [
+                                E('tr', { 'class': 'tr table-titles' }, [
+                                        makeSortHeader(
+                                                _('Apparaat'),
+                                                'device',
+                                                _('Best herkenbare naam voor dit apparaat. Klik om te sorteren.')
+                                        ),
+                                        makeSortHeader(
+                                                _('IP'),
+                                                'ip',
+                                                _('Klik om numeriek op IP-adres te sorteren.')
+                                        ),
+                                        makeSortHeader(
+                                                _('FQDN'),
+                                                'fqdn',
+                                                _('Volledige lokale DNS-naam. Klik om te sorteren.')
+                                        ),
+                                        makeSortHeader(
+                                                _('DNS-bron'),
+                                                'source',
+                                                _('Herkomst van de lokale DNS-naam. Klik om te sorteren.')
+                                        ),
+                                        makeSortHeader(
+                                                _('UniFi-naam'),
+                                                'unifi',
+                                                _('Naam uit UniFi Network. Klik om te sorteren.')
+                                        ),
+                                        makeSortHeader(
+                                                _('Fabrikant'),
+                                                'vendor',
+                                                _('Klik om op fabrikant te sorteren.')
+                                        ),
+                                        makeSortHeader(
+                                                _('MAC'),
+                                                'mac',
+                                                _('Klik om op MAC-adres te sorteren.')
+                                        ),
+                                        makeSortHeader(
+                                                _('MAC-status'),
+                                                'macstatus',
+                                                _('Klik om op MAC-status te sorteren.')
+                                        )
+                                ])
+                        ]),
+                        tableBody
+                ]);
 
-		renderTable('');
+                updateSortHeaders();
+                renderTable('');
 
 		return E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('Panici DNS-apparaten')),
@@ -353,10 +493,11 @@ return view.extend({
                                 fqdnPreview.textContent = c + '.panici.casa';
                         }
                         else if (current) {
-                                fqdnPreview.textContent = current + ' (' + _('ongewijzigd') + ')';
+                                fqdnPreview.textContent =
+                                        current + ' (' + _('geen wijziging') + ')';
                         }
                         else {
-                                fqdnPreview.textContent = _('Geen handmatige hostnaam ingesteld');
+                                fqdnPreview.textContent = _('Geen DNS-naam');
                         }
                 }
 
@@ -416,7 +557,11 @@ return view.extend({
                                 field(_('DHCP-hostnaam'), E('span', {}, display(device.dhcp_hostname))),
                                 field(_('Fabrikant'), E('span', {}, display(device.oui))),
                                 field(_('Vast IP-adres'), E('span', {}, display(device.fixed_ip))),
-                                field(_('MAC-type'), E('span', {}, display(device.mac_type)))
+                                field(_('MAC-type'), E('span', {}, device.mac_type === 'locally-administered'
+                                                ? _('Lokaal beheerd')
+                                                : device.mac_type === 'globally-administered'
+                                                        ? _('Globaal toegewezen')
+                                                        : display(device.mac_type)))
                         ]),
 
                         E('h3', {}, _('Lokale metadata')),
@@ -486,7 +631,7 @@ return view.extend({
 		}, _('Save & Apply')));
 
 		ui.showModal(
-			_('Panici DNS device') + ' — ' + display(device.ip),
+			_('Panici DNS-apparaat') + ' — ' + display(device.ip),
 			[
 				body,
 				E('div', {
