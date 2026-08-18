@@ -1,0 +1,16 @@
+# Panici DNS logische apparaatidentiteiten
+#
+# Interfaces met dezelfde niet-lege identity behoren expliciet
+# tot hetzelfde logische apparaat. Zij mogen daardoor dezelfde
+# canonical DNS-naam delen.
+#
+# MAC	identity
+
+# Docker - drie NICs / VLANs
+bc:24:11:07:49:ec	docker
+bc:24:11:6d:2e:51	docker
+bc:24:11:73:87:5d	docker
+
+# Micro - twee NICs
+3c:a8:2a:a0:50:48	micro
+3c:a8:2a:a0:50:49	micro

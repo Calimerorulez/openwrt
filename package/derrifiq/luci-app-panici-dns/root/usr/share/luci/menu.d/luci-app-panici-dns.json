@@ -1,15 +1,40 @@
 {
-	"admin/services/panici-dns": {
-		"title": "Panici DNS Devices",
-		"order": 90,
-		"action": {
-			"type": "view",
-			"path": "panici-dns/devices"
-		},
-		"depends": {
-			"acl": [
-				"luci-app-panici-dns"
-			]
-		}
-	}
+        "admin/services/panici-dns": {
+                "title": "Panici DNS",
+                "order": 90,
+                "action": {
+                        "type": "firstchild"
+                },
+                "depends": {
+                        "acl": [
+                                "luci-app-panici-dns"
+                        ]
+                }
+        },
+        "admin/services/panici-dns/devices": {
+                "title": "Apparaten",
+                "order": 10,
+                "action": {
+                        "type": "view",
+                        "path": "panici-dns/devices"
+                },
+                "depends": {
+                        "acl": [
+                                "luci-app-panici-dns"
+                        ]
+                }
+        },
+        "admin/services/panici-dns/records": {
+                "title": "Actieve DNS-records",
+                "order": 20,
+                "action": {
+                        "type": "view",
+                        "path": "panici-dns/records"
+                },
+                "depends": {
+                        "acl": [
+                                "luci-app-panici-dns"
+                        ]
+                }
+        }
 }

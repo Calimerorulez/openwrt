@@ -369,6 +369,19 @@ BEGIN {
     }
     close(FIXEDFILE)
 
+    IDENTITYFILE="/etc/panici-dns/device-identities.tsv"
+
+    while ((getline line < IDENTITYFILE) > 0) {
+        if (line ~ /^#/ || line == "")
+            continue
+
+        n=split(line,a,"\t")
+
+        if (n >= 2)
+            identities[tolower(a[1])]=a[2]
+    }
+    close(IDENTITYFILE)
+
     while ((getline line < OVERRIDEFILE) > 0) {
         n=split(line,a,"\t")
 
@@ -431,6 +444,9 @@ NR == 1 {
     dtype=""
     identity=""
     warning=""
+
+    if (mac in identities)
+        identity=identities[mac]
 
     #
     # Beste niet-bindende suggestie.
@@ -598,9 +614,11 @@ NR == 1 {
             cancol=i
         else if ($i == "canonical_source")
             srccol=i
+        else if ($i == "identity")
+            idcol=i
     }
 
-    if (!maccol || !ipcol || !sugcol || !cancol || !srccol) {
+    if (!maccol || !ipcol || !sugcol || !cancol || !srccol || !idcol) {
         print "ERROR: required devices.tsv columns missing" > "/dev/stderr"
         failed=1
     }
@@ -614,6 +632,7 @@ NR == FNR {
 
     mac=tolower($maccol)
     ip=$ipcol
+    identity=$idcol
     canonical=shortname($cancol)
     own=owner(mac, ip)
 
@@ -621,16 +640,25 @@ NR == FNR {
     # Bestaande canonical namen zijn gereserveerd.
     #
     if (canonical != "") {
-        if ((canonical in reserved) && reserved[canonical] != own) {
-            printf \
-                "ERROR: canonical DNS name %s.panici.casa is assigned to both %s and %s\n", \
-                canonical, reserved[canonical], own \
-                > "/dev/stderr"
+        if (canonical in reserved) {
+            if (reserved[canonical] == own) {
+                # Zelfde record; niets doen.
+            }
+            else if (identity != "" && reserved_identity[canonical] != "" && reserved_identity[canonical] == identity) {
+                reserved[canonical]=reserved[canonical] "; " own
+            }
+            else {
+                printf \
+                    "ERROR: canonical DNS name %s.panici.casa is assigned to unrelated devices %s and %s\n", \
+                    canonical, reserved[canonical], own \
+                    > "/dev/stderr"
 
-            failed=1
+                failed=1
+            }
         }
         else {
             reserved[canonical]=own
+            reserved_identity[canonical]=identity
         }
 
         next
@@ -644,12 +672,14 @@ NR == FNR {
     if (candidate == "" || candidate in generic)
         next
 
-    auto_count[candidate]++
+    group=candidate SUBSEP identity
 
-    if (auto_owners[candidate] == "")
-        auto_owners[candidate]=own
+    auto_count[group]++
+
+    if (auto_owners[group] == "")
+        auto_owners[group]=own
     else
-        auto_owners[candidate]=auto_owners[candidate] "; " own
+        auto_owners[group]=auto_owners[group] "; " own
 
     next
 }
@@ -668,6 +698,7 @@ FNR == 1 {
 
     mac=tolower($maccol)
     ip=$ipcol
+    identity=$idcol
 
     conflict=""
     conflict_with=""
@@ -682,13 +713,16 @@ FNR == 1 {
         candidate=slug($sugcol)
 
         if (candidate != "") {
-            if ((candidate in reserved)) {
+
+            group=candidate SUBSEP identity
+
+            if ((candidate in reserved) && !(identity != "" && reserved_identity[candidate] != "" && reserved_identity[candidate] == identity)) {
                 conflict=candidate ".panici.casa"
                 conflict_with=reserved[candidate]
             }
-            else if (auto_count[candidate] > 1) {
+            else if (auto_count[group] > 1 && identity == "") {
                 conflict=candidate ".panici.casa"
-                conflict_with=auto_owners[candidate]
+                conflict_with=auto_owners[group]
             }
             else {
                 if (!(candidate in generic)) {

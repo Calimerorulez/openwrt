@@ -60,6 +60,7 @@ NR == 1 {
 
     mac=tolower($1)
     canonical=$2
+    identity=$6
 
     if (mac !~ /^[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]$/) {
         printf "line %d: invalid MAC address\n", NR > "/dev/stderr"
@@ -77,15 +78,26 @@ NR == 1 {
     }
 
     canonical_key=tolower(canonical)
+    identity_key=tolower(identity)
 
     if (canonical_key in canonical_seen && canonical_seen[canonical_key] != mac) {
-        printf "line %d: canonical hostname %s is already used by %s\n", \
-            NR, canonical, canonical_seen[canonical_key] > "/dev/stderr"
-        failed=1
+        if (
+            identity_key == "" ||
+            canonical_identity[canonical_key] == "" ||
+            canonical_identity[canonical_key] != identity_key
+        ) {
+            printf "line %d: canonical hostname %s is already used by unrelated device %s\n", \
+                NR, canonical, canonical_seen[canonical_key] > "/dev/stderr"
+            failed=1
+        }
     }
 
     seen[mac]=1
-    canonical_seen[canonical_key]=mac
+
+    if (!(canonical_key in canonical_seen)) {
+        canonical_seen[canonical_key]=mac
+        canonical_identity[canonical_key]=identity_key
+    }
 }
 
 END {
