@@ -509,3 +509,210 @@ else
     cp "$OUT_TMP" "$OUT"
     echo "$(date '+%F %T') device registry updated: $OUT"
 fi
+
+###############################################################################
+# PANICI_AUTO_CANONICAL_V123
+#
+# Automatische canonical DNS-namen.
+#
+# Prioriteit:
+#   1. handmatige override
+#   2. bestaande fixed-config
+#   3. unieke geldige suggested_name
+#
+# Een automatisch naamconflict wordt NIET zelf opgelost met suffixes.
+# In dat geval blijft canonical leeg en wordt het conflict in devices.tsv
+# geregistreerd zodat LuCI de gebruiker kan laten ingrijpen.
+###############################################################################
+
+AUTO_TMP="/tmp/panici-auto-canonical.$$"
+
+if ! awk -F '\t' '
+BEGIN {
+    # Namen die technisch geldig zijn, maar te generiek zijn om
+    # zonder menselijke keuze automatisch als canonical DNS-naam
+    # te publiceren.
+    generic["espressif"]=1
+    generic["iphone"]=1
+    generic["imac"]=1
+    generic["poort"]=1
+    OFS="\t"
+    failed=0
+}
+
+function shortname(v, x) {
+    x=tolower(v)
+
+    gsub(/^[ \t]+/, "", x)
+    gsub(/[ \t]+$/, "", x)
+
+    if (x == "" || x == "-")
+        return ""
+
+    sub(/\.$/, "", x)
+    sub(/\.panici\.casa$/, "", x)
+
+    return x
+}
+
+function slug(v, x) {
+    x=shortname(v)
+
+    if (x == "")
+        return ""
+
+    # Spaties en overige ongeldige tekens worden koppeltekens.
+    gsub(/[^a-z0-9-]+/, "-", x)
+    gsub(/-+/, "-", x)
+    sub(/^-+/, "", x)
+    sub(/-+$/, "", x)
+
+    # Eén DNS-label mag maximaal 63 tekens bevatten.
+    if (length(x) > 63) {
+        x=substr(x, 1, 63)
+        sub(/-+$/, "", x)
+    }
+
+    if (x !~ /^[a-z0-9][a-z0-9-]*$/)
+        return ""
+
+    return x
+}
+
+function owner(mac, ip) {
+    return ip " / " mac
+}
+
+#
+# Eerste bestand: inventariseren.
+#
+NR == 1 {
+    for (i=1; i<=NF; i++) {
+        if ($i == "mac")
+            maccol=i
+        else if ($i == "ip")
+            ipcol=i
+        else if ($i == "suggested_name")
+            sugcol=i
+        else if ($i == "canonical")
+            cancol=i
+        else if ($i == "canonical_source")
+            srccol=i
+    }
+
+    if (!maccol || !ipcol || !sugcol || !cancol || !srccol) {
+        print "ERROR: required devices.tsv columns missing" > "/dev/stderr"
+        failed=1
+    }
+
+    next
+}
+
+NR == FNR {
+    if (failed)
+        next
+
+    mac=tolower($maccol)
+    ip=$ipcol
+    canonical=shortname($cancol)
+    own=owner(mac, ip)
+
+    #
+    # Bestaande canonical namen zijn gereserveerd.
+    #
+    if (canonical != "") {
+        if ((canonical in reserved) && reserved[canonical] != own) {
+            printf \
+                "ERROR: canonical DNS name %s.panici.casa is assigned to both %s and %s\n", \
+                canonical, reserved[canonical], own \
+                > "/dev/stderr"
+
+            failed=1
+        }
+        else {
+            reserved[canonical]=own
+        }
+
+        next
+    }
+
+    #
+    # Alleen niet-canonical apparaten zijn automatische kandidaten.
+    #
+    candidate=slug($sugcol)
+
+    if (candidate == "" || candidate in generic)
+        next
+
+    auto_count[candidate]++
+
+    if (auto_owners[candidate] == "")
+        auto_owners[candidate]=own
+    else
+        auto_owners[candidate]=auto_owners[candidate] "; " own
+
+    next
+}
+
+#
+# Tweede bestand: nieuwe header.
+#
+FNR == 1 {
+    print $0, "canonical_conflict", "canonical_conflict_with"
+    next
+}
+
+{
+    if (failed)
+        next
+
+    mac=tolower($maccol)
+    ip=$ipcol
+
+    conflict=""
+    conflict_with=""
+
+    canonical=shortname($cancol)
+
+    #
+    # Alleen apparaten zonder bestaande canonical komen voor automatic
+    # in aanmerking.
+    #
+    if (canonical == "") {
+        candidate=slug($sugcol)
+
+        if (candidate != "") {
+            if ((candidate in reserved)) {
+                conflict=candidate ".panici.casa"
+                conflict_with=reserved[candidate]
+            }
+            else if (auto_count[candidate] > 1) {
+                conflict=candidate ".panici.casa"
+                conflict_with=auto_owners[candidate]
+            }
+            else {
+                if (!(candidate in generic)) {
+                    $cancol=candidate ".panici.casa."
+                    $srccol="automatic"
+                }
+            }
+        }
+    }
+
+    print $0, conflict, conflict_with
+}
+
+END {
+    if (failed)
+        exit 2
+}
+' "$OUT" "$OUT" > "$AUTO_TMP"
+then
+    rm -f "$AUTO_TMP"
+    echo "$(date '+%F %T') ERROR: automatic canonical DNS processing failed" >&2
+    exit 1
+fi
+
+mv "$AUTO_TMP" "$OUT"
+
+

@@ -126,15 +126,14 @@ while IFS="$(printf '\t')" read -r IP NAME; do
     [ -n "$IP" ] || continue
     [ -n "$NAME" ] || continue
 
-    # Een andere generator beheert de PTR al.
-    if grep -qxF "$IP" "$SEEN"; then
-        continue
-    fi
-
     LOWER_NAME=$(printf '%s' "$NAME" | tr 'A-Z' 'a-z')
 
     #
-    # Bestaat canonical forwardnaam nog niet, maak A-alias.
+    # Bestaat de canonical forwardnaam nog niet voor dit IP,
+    # maak dan altijd de A-alias.
+    #
+    # Een bestaande PTR van een andere generator mag een extra
+    # geldige forward-alias niet blokkeren.
     #
     if ! awk -F '\t' -v n="$LOWER_NAME" -v ip="$IP" '
         $1 == n && $2 == ip {
@@ -148,8 +147,14 @@ while IFS="$(printf '\t')" read -r IP NAME; do
         echo "    local-data: \"$NAME A $IP\"" >> "$TMP"
     fi
 
-    echo "    local-data-ptr: \"$IP $NAME\"" >> "$TMP"
-    echo "$IP" >> "$SEEN"
+    #
+    # PTR alleen publiceren wanneer nog geen andere generator
+    # deze IP/PTR beheert.
+    #
+    if ! grep -qxF "$IP" "$SEEN"; then
+        echo "    local-data-ptr: \"$IP $NAME\"" >> "$TMP"
+        echo "$IP" >> "$SEEN"
+    fi
 
 done < "$CANONICAL"
 
