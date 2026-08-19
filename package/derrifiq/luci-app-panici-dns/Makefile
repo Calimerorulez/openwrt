@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-panici-dns
 PKG_VERSION:=1.2.4
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=Patrick
@@ -14,7 +14,7 @@ define Package/luci-app-panici-dns
   CATEGORY:=LuCI
   SUBMENU:=3. Applications
   TITLE:=LuCI Panici DNS device manager
-  DEPENDS:=+luci-base +panici-dns
+  DEPENDS:=+luci-base +panici-dns +curl
   PKGARCH:=all
 endef
 

@@ -504,11 +504,32 @@ return view.extend({
 					);
 				}
 
-				ui.addNotification(
-					null,
-					E('p', {}, successMessage),
-					'info'
+				var backendOutput = [
+					res.stdout || '',
+					res.stderr || ''
+				].join('\n');
+
+				var warningMatch = backendOutput.match(
+					/WARNING:\s*([^\n\r]+)/
 				);
+
+				if (warningMatch) {
+					ui.addNotification(
+						null,
+						E('p', {}, [
+							E('strong', {}, successMessage + ' '),
+							warningMatch[1]
+						]),
+						'warning'
+					);
+				}
+				else {
+					ui.addNotification(
+						null,
+						E('p', {}, successMessage),
+						'info'
+					);
+				}
 
 				window.setTimeout(function() {
 					window.location.reload();

@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=panici-dns
 PKG_VERSION:=1.2.4
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=derrifiq
@@ -28,6 +28,7 @@ define Package/panici-dns/conffiles
 /etc/unbound/panici/device-overrides.tsv
 /etc/panici-dns/device-identities.tsv
 /etc/panici-dns/managed-records.tsv
+/etc/panici-dns/adguard-cache.conf
 endef
 
 define Build/Compile
@@ -58,6 +59,8 @@ define Package/panici-dns/install
 		$(1)/etc/panici-dns/device-identities.tsv
 	$(INSTALL_CONF) ./files/etc/panici-dns/managed-records.tsv \
 		$(1)/etc/panici-dns/managed-records.tsv
+	$(INSTALL_CONF) ./files/etc/panici-dns/adguard-cache.conf \
+		$(1)/etc/panici-dns/adguard-cache.conf
 endef
 
 $(eval $(call BuildPackage,panici-dns))
