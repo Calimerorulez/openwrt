@@ -44,6 +44,9 @@ for FILE in "$DIR"/*.conf; do
             ;;
     esac
 
+    #
+    # Forward A-records.
+    #
     awk '
     $1 == "local-data:" && $3 == "A" {
         name=$2
@@ -53,10 +56,16 @@ for FILE in "$DIR"/*.conf; do
         sub(/"$/, "", ip)
         sub(/\.$/, "", name)
 
-        if (name != "" && ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)
+        if (name != "" &&
+            ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)
             print tolower(name) "\t" ip
     }
+    ' "$FILE" >> "$EXTERNAL_A"
 
+    #
+    # PTR-records.
+    #
+    awk '
     $1 == "local-data-ptr:" {
         ip=$2
         name=$3
@@ -64,10 +73,11 @@ for FILE in "$DIR"/*.conf; do
         sub(/^"/, "", ip)
         sub(/"$/, "", name)
 
-        if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && name != "")
-            print ip "\t" name > "/dev/stderr"
+        if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ &&
+            name != "")
+            print ip "\t" name
     }
-    ' "$FILE" >> "$EXTERNAL_A" 2>> "$EXTERNAL_PTR"
+    ' "$FILE" >> "$EXTERNAL_PTR"
 done
 
 sort -u "$EXTERNAL_A" -o "$EXTERNAL_A"

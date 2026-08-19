@@ -165,6 +165,52 @@ if ! /etc/init.d/unbound reload; then
     exit 1
 fi
 
+###############################################################################
+# AdGuard Home cache
+#
+# Dit is bewust best-effort. Vanaf dit punt is de managed DNS-transactie
+# geldig en actief in Unbound. Een cachefout mag die geldige state nooit
+# terugrollen.
+###############################################################################
+
+ADGUARD_CONFIG="/etc/panici-dns/adguard-cache.conf"
+
+if [ -f "$ADGUARD_CONFIG" ]; then
+    # shellcheck disable=SC1090
+    . "$ADGUARD_CONFIG"
+fi
+
+if [ "${ENABLED:-0}" = "1" ]; then
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "WARNING: DNS opgeslagen, maar curl ontbreekt; AdGuard-cache niet geleegd" >&2
+
+    elif [ -z "${URL:-}" ]; then
+        echo "WARNING: DNS opgeslagen, maar AdGuard cache-URL ontbreekt" >&2
+
+    elif [ -z "${NETRC:-}" ] || [ ! -s "$NETRC" ]; then
+        echo "WARNING: DNS opgeslagen, maar AdGuard credentials ontbreken; cache niet geleegd" >&2
+
+    else
+        CACHE_RESPONSE="/tmp/panici-adguard-cache-clear.$$"
+        CACHE_HTTP=""
+
+        if CACHE_HTTP="$(
+            curl                 --silent                 --show-error                 --netrc-file "$NETRC"                 --request POST                 --output "$CACHE_RESPONSE"                 --write-out '%{http_code}'                 "$URL"
+        )"
+        then
+            if [ "$CACHE_HTTP" = "200" ]; then
+                echo "AdGuard cache cleared"
+            else
+                echo "WARNING: DNS opgeslagen, maar AdGuard cache-clear gaf HTTP $CACHE_HTTP" >&2
+            fi
+        else
+            echo "WARNING: DNS opgeslagen, maar AdGuard cache-clear mislukt" >&2
+        fi
+
+        rm -f "$CACHE_RESPONSE"
+    fi
+fi
+
 rm -f "$CANDIDATE_SOURCE"
 
 echo "OK"
