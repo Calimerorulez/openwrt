@@ -13,6 +13,11 @@ VALIDATE_CONF="/tmp/panici-managed-unbound-validate.conf"
 SOURCE_BACKUP="/tmp/panici-managed-records.tsv.backup.$$"
 CONF_BACKUP="/tmp/panici-managed.conf.backup.$$"
 
+OLD_RUNTIME="/tmp/panici-managed-runtime-old.$$"
+NEW_RUNTIME="/tmp/panici-managed-runtime-new.$$"
+OLD_NAMES="/tmp/panici-managed-runtime-old-names.$$"
+NEW_NAMES="/tmp/panici-managed-runtime-new-names.$$"
+
 INCLUDE_FILE="/etc/unbound/unbound_ext.conf"
 INCLUDE_LINE='include: "/etc/unbound/panici/managed.conf"'
 
@@ -25,7 +30,11 @@ cleanup() {
         "$CANDIDATE_CONF" \
         "$VALIDATE_CONF" \
         "$SOURCE_BACKUP" \
-        "$CONF_BACKUP"
+        "$CONF_BACKUP" \
+        "$OLD_RUNTIME" \
+        "$NEW_RUNTIME" \
+        "$OLD_NAMES" \
+        "$NEW_NAMES"
 }
 trap cleanup EXIT INT TERM
 
@@ -39,6 +48,98 @@ remove_include() {
 
     grep -vxF "$INCLUDE_LINE" "$INCLUDE_FILE" > "$TMP_INCLUDE" || true
     mv "$TMP_INCLUDE" "$INCLUDE_FILE"
+}
+
+#
+# Zet managed.conf om naar runtime records voor unbound-control.
+#
+# Outputvoorbeeld:
+#   host.panici.casa. 3600 IN A 10.0.5.10
+#   10.5.0.10.in-addr.arpa. 3600 IN PTR host.panici.casa.
+#
+conf_to_runtime() {
+    FILE="$1"
+    OUT="$2"
+
+    : > "$OUT"
+
+    [ -f "$FILE" ] || return 0
+
+    awk '
+    $1 == "local-data:" && $3 == "A" {
+        name=$2
+        ip=$4
+
+        sub(/^"/, "", name)
+        sub(/"$/, "", ip)
+
+        print name " 3600 IN A " ip
+        next
+    }
+
+    $1 == "local-data-ptr:" {
+        ip=$2
+        name=$3
+
+        sub(/^"/, "", ip)
+        sub(/"$/, "", name)
+
+        n=split(ip,a,".")
+
+        if (n == 4) {
+            reverse=a[4] "." a[3] "." a[2] "." a[1] ".in-addr.arpa."
+            print reverse " 3600 IN PTR " name
+        }
+    }
+    ' "$FILE" > "$OUT"
+}
+
+#
+# Alleen de owner-namen die local_datas_remove verwacht.
+#
+runtime_names() {
+    INPUT="$1"
+    OUTPUT="$2"
+
+    awk '
+    NF > 0 {
+        print $1
+    }
+    ' "$INPUT" | sort -u > "$OUTPUT"
+}
+
+runtime_remove() {
+    FILE="$1"
+
+    [ -s "$FILE" ] || return 0
+
+    if ! unbound-control local_datas_remove < "$FILE"; then
+        echo "ERROR: could not remove managed runtime DNS records" >&2
+        return 1
+    fi
+}
+
+runtime_add() {
+    FILE="$1"
+
+    [ -s "$FILE" ] || return 0
+
+    if ! unbound-control local_datas < "$FILE"; then
+        echo "ERROR: could not add managed runtime DNS records" >&2
+        return 1
+    fi
+}
+
+restore_runtime() {
+    #
+    # Verwijder eerst alle namen uit de nieuw beoogde runtime-state.
+    #
+    runtime_remove "$NEW_NAMES" >/dev/null 2>&1 || true
+
+    #
+    # Herstel daarna exact de oude managed runtime-RR's.
+    #
+    runtime_add "$OLD_RUNTIME" >/dev/null 2>&1 || true
 }
 
 rollback_live() {
@@ -60,14 +161,7 @@ rollback_live() {
         remove_include
     fi
 
-    #
-    # Probeer na rollback de vorige geldige runtime-state weer
-    # expliciet in te laden. Fouten hier veranderen de oorspronkelijke
-    # apply-fout niet in succes.
-    #
-    if unbound-checkconf >/dev/null 2>&1; then
-        /etc/init.d/unbound reload >/dev/null 2>&1 || true
-    fi
+    restore_runtime
 }
 
 [ -f "$CANDIDATE_SOURCE" ] || fail "candidate source not found"
@@ -76,12 +170,11 @@ rollback_live() {
 
 mkdir -p /etc/panici-dns /etc/unbound/panici
 
-#
+###############################################################################
 # FASE 1
-#
-# Candidate volledig compileren. De live bron en live managed.conf
-# worden hier nog niet aangeraakt.
-#
+# Candidate volledig compileren; live state nog onaangeraakt.
+###############################################################################
+
 if ! /usr/bin/panici-managed-dns-compile \
     "$CANDIDATE_SOURCE" \
     "$CANDIDATE_CONF"
@@ -89,12 +182,11 @@ then
     fail "candidate DNS compilation failed"
 fi
 
-#
+###############################################################################
 # FASE 2
-#
-# Valideer de complete Panici-configset met de candidate managed.conf
-# in plaats van de eventuele huidige managed.conf.
-#
+# Complete candidate-config valideren.
+###############################################################################
+
 {
     for FILE in /etc/unbound/panici/*.conf; do
         [ -f "$FILE" ] || continue
@@ -117,12 +209,22 @@ if ! unbound-checkconf "$VALIDATE_CONF" >/dev/null 2>&1; then
     exit 1
 fi
 
-#
+###############################################################################
 # FASE 3
-#
-# Vanaf hier pas live-state wijzigen. Eerst exact vastleggen wat er
-# vóór de transactie bestond.
-#
+# Oude en nieuwe managed runtime-state exact bepalen.
+###############################################################################
+
+conf_to_runtime "$LIVE_CONF" "$OLD_RUNTIME"
+conf_to_runtime "$CANDIDATE_CONF" "$NEW_RUNTIME"
+
+runtime_names "$OLD_RUNTIME" "$OLD_NAMES"
+runtime_names "$NEW_RUNTIME" "$NEW_NAMES"
+
+###############################################################################
+# FASE 4
+# Backups en atomische disk-commit.
+###############################################################################
+
 if [ -f "$LIVE_SOURCE" ]; then
     HAD_SOURCE=1
     cp "$LIVE_SOURCE" "$SOURCE_BACKUP"
@@ -139,38 +241,35 @@ cp "$CANDIDATE_CONF" "${LIVE_CONF}.new"
 mv "${LIVE_SOURCE}.new" "$LIVE_SOURCE"
 mv "${LIVE_CONF}.new" "$LIVE_CONF"
 
-#
-# Include pas toevoegen nadat beide live bestanden zijn geïnstalleerd.
-#
 if ! grep -qxF "$INCLUDE_LINE" "$INCLUDE_FILE"; then
     printf '%s\n' "$INCLUDE_LINE" >> "$INCLUDE_FILE"
     INCLUDE_ADDED=1
 fi
 
-#
-# Defensieve validatie van de echte complete Unbound-config.
-#
 if ! unbound-checkconf >/dev/null 2>&1; then
     echo "ERROR: live Unbound configuration failed after commit" >&2
     rollback_live
     exit 1
 fi
 
-#
-# Ook een reload-fout maakt de transactie ongeldig.
-#
-if ! /etc/init.d/unbound reload; then
-    echo "ERROR: Unbound reload failed" >&2
+###############################################################################
+# FASE 5
+# Managed runtime-state zonder resolver reload vervangen.
+###############################################################################
+
+if ! runtime_remove "$OLD_NAMES"; then
+    rollback_live
+    exit 1
+fi
+
+if ! runtime_add "$NEW_RUNTIME"; then
     rollback_live
     exit 1
 fi
 
 ###############################################################################
-# AdGuard Home cache
-#
-# Dit is bewust best-effort. Vanaf dit punt is de managed DNS-transactie
-# geldig en actief in Unbound. Een cachefout mag die geldige state nooit
-# terugrollen.
+# FASE 6
+# AdGuard-cache best-effort legen.
 ###############################################################################
 
 ADGUARD_CONFIG="/etc/panici-dns/adguard-cache.conf"
@@ -195,7 +294,14 @@ if [ "${ENABLED:-0}" = "1" ]; then
         CACHE_HTTP=""
 
         if CACHE_HTTP="$(
-            curl                 --silent                 --show-error                 --netrc-file "$NETRC"                 --request POST                 --output "$CACHE_RESPONSE"                 --write-out '%{http_code}'                 "$URL"
+            curl \
+                --silent \
+                --show-error \
+                --netrc-file "$NETRC" \
+                --request POST \
+                --output "$CACHE_RESPONSE" \
+                --write-out '%{http_code}' \
+                "$URL"
         )"
         then
             if [ "$CACHE_HTTP" = "200" ]; then
