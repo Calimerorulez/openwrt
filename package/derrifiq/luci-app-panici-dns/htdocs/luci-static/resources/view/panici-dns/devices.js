@@ -44,7 +44,8 @@ function parseOverrides(data) {
 			description: r.description || '',
 			room: r.room || '',
 			type: r.type || '',
-			identity: r.identity || ''
+			identity: r.identity || '',
+			lifecycle: r.lifecycle || 'active'
 		};
 	});
 
@@ -91,6 +92,9 @@ function deviceLabel(d) {
 }
 
 function sourceLabel(v, device) {
+        if (device && device.lifecycle === 'retired')
+                return _('Verouderd');
+
         if (device && device.canonical_conflict)
                 return _('Conflict');
 
@@ -122,7 +126,8 @@ function saveData(devices, overrides) {
 			'description',
 			'room',
 			'type',
-			'identity'
+			'identity',
+			'lifecycle'
 		].join('\t')
 	];
 
@@ -131,7 +136,12 @@ function saveData(devices, overrides) {
 		.forEach(function(mac) {
 			var o = overrides[mac];
 
-			if (!o || !o.canonical)
+			if (!o)
+				return;
+
+			var lifecycle = o.lifecycle || 'active';
+
+			if (!o.canonical && lifecycle !== 'retired')
 				return;
 
 			rows.push([
@@ -140,7 +150,8 @@ function saveData(devices, overrides) {
 				tsvSafe(o.description),
 				tsvSafe(o.room),
 				tsvSafe(o.type),
-				tsvSafe(o.identity || o.canonical)
+				tsvSafe(o.identity || o.canonical),
+				tsvSafe(o.lifecycle || 'active')
 			].join('\t'));
 		});
 
@@ -346,7 +357,9 @@ return view.extend({
                                         o.description,
                                         o.room,
                                         o.type,
-                                        o.identity
+                                        o.identity,
+                                        d.lifecycle,
+                                        o.lifecycle
                                 ].join(' ').toLowerCase();
 
                                 return !q || haystack.indexOf(q) >= 0;
@@ -549,6 +562,19 @@ return view.extend({
 			'type': 'text',
 			'value': existing.identity || ''
 		});
+
+		var lifecycle = E('select', {
+			'class': 'cbi-input-select'
+		}, [
+			E('option', {
+				'value': 'active',
+				'selected': (existing.lifecycle || device.lifecycle || 'active') !== 'retired'
+			}, _('Actief / behouden')),
+			E('option', {
+				'value': 'retired',
+				'selected': (existing.lifecycle || device.lifecycle || 'active') === 'retired'
+			}, _('Verouderd / vervangen'))
+		]);
                 var fqdnPreview = E('strong', {}, '');
 
                 function updateFQDNPreview() {
@@ -575,12 +601,19 @@ return view.extend({
                 canonical.addEventListener('input', updateFQDNPreview);
                 updateFQDNPreview();
 
-		function field(label, control) {
+		function field(label, control, description) {
 			return E('div', {
 				'class': 'cbi-value'
 			}, [
 				E('label', { 'class': 'cbi-value-title' }, label),
-				E('div', { 'class': 'cbi-value-field' }, control)
+				E('div', { 'class': 'cbi-value-field' }, [
+					control,
+					description
+						? E('div', {
+							'class': 'cbi-value-description'
+						}, description)
+						: ''
+				])
 			]);
 		}
 
@@ -678,7 +711,12 @@ return view.extend({
                                 field(_('Beschrijving'), description),
                                 field(_('Ruimte'), room),
                                 field(_('Type'), type),
-                                field(_('Aangepaste identiteit'), identity)
+                                field(_('Aangepaste identiteit'), identity),
+                                field(
+                                        _('Lifecycle'),
+                                        lifecycle,
+                                        _('Offline betekent niet automatisch verouderd. Markeer alleen vervangen of definitief verwijderde hardware als verouderd.')
+                                )
                         ])
                 ]));
 
@@ -724,7 +762,8 @@ return view.extend({
 					description: tsvSafe(description.value),
 					room: tsvSafe(room.value),
 					type: tsvSafe(type.value),
-					identity: tsvSafe(identity.value || c)
+					identity: tsvSafe(identity.value || c),
+					lifecycle: lifecycle.value === 'retired' ? 'retired' : 'active'
 				};
 
 				return this.writeAndApply(overrides).then(function() {

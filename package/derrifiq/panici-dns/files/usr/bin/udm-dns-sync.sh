@@ -115,6 +115,10 @@ if [ -f "$OVERRIDES" ]; then
     NF >= 2 {
         mac=tolower($1)
         name=$2
+        lifecycle=(NF >= 7 ? tolower($7) : "active")
+
+        if (lifecycle == "retired")
+            next
 
         sub(/\.$/, "", name)
         sub(/\.panici\.casa$/, "", name)

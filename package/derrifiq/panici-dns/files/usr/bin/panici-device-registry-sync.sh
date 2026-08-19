@@ -153,7 +153,7 @@ $1 == "local-data:" && $3 == "A" {
 # 4. Handmatige overrides normaliseren
 #
 # Formaat:
-# mac canonical description room type identity
+# mac canonical description room type identity lifecycle
 ###############################################################################
 
 if [ -f "$OVERRIDES" ]; then
@@ -173,6 +173,10 @@ if [ -f "$OVERRIDES" ]; then
         room=(NF >= 4 ? $4 : "")
         dtype=(NF >= 5 ? $5 : "")
         identity=(NF >= 6 && $6 != "" ? $6 : canonical)
+        lifecycle=(NF >= 7 && $7 != "" ? tolower($7) : "active")
+
+        if (lifecycle != "active" && lifecycle != "retired")
+            lifecycle="active"
 
         sub(/\.$/, "", canonical)
         sub(/\.panici\.casa$/, "", canonical)
@@ -189,7 +193,8 @@ if [ -f "$OVERRIDES" ]; then
             description, \
             room, \
             dtype, \
-            identity
+            identity, \
+            lifecycle
     }
     ' "$OVERRIDES" > "$OVERRIDE_TMP"
 else
@@ -393,6 +398,7 @@ BEGIN {
             oroom[mac]=(n >= 4 ? a[4] : "")
             otype[mac]=(n >= 5 ? a[5] : "")
             oidentity[mac]=(n >= 6 ? a[6] : "")
+            olifecycle[mac]=(n >= 7 && a[7] != "" ? tolower(a[7]) : "active")
         }
     }
     close(OVERRIDEFILE)
@@ -416,7 +422,8 @@ BEGIN {
         "last_seen", \
         "fixed_ip", \
         "use_fixedip", \
-        "identity_warning"
+        "identity_warning", \
+        "lifecycle"
 }
 
 NR == 1 {
@@ -444,6 +451,10 @@ NR == 1 {
     dtype=""
     identity=""
     warning=""
+    lifecycle="active"
+
+    if (mac in olifecycle)
+        lifecycle=olifecycle[mac]
 
     if (mac in identities)
         identity=identities[mac]
@@ -468,20 +479,26 @@ NR == 1 {
     #
     # Expliciete override is hoogste prioriteit.
     #
-    if (mac in ocanonical && ocanonical[mac] != "") {
-        canonical=ocanonical[mac] ".panici.casa."
-        csource="override"
-
+    if (mac in ocanonical) {
         description=odescription[mac]
         room=oroom[mac]
         dtype=otype[mac]
         identity=oidentity[mac]
+
+        if (lifecycle == "active" && ocanonical[mac] != "") {
+            canonical=ocanonical[mac] ".panici.casa."
+            csource="override"
+        }
+        else if (lifecycle == "retired") {
+            canonical="-"
+            csource="retired"
+        }
     }
 
     #
     # Anders bestaande lokaal beheerde canonical naam.
     #
-    else if (ip in fixed) {
+    else if (lifecycle != "retired" && ip in fixed) {
         canonical=fixed[ip]
 
         if (canonical !~ /\.$/)
@@ -515,7 +532,8 @@ NR == 1 {
         lastseen, \
         fixedip, \
         usefixed, \
-        warning
+        warning, \
+        lifecycle
 }
 ' "$DISCOVERED" > "$OUT_TMP"
 
@@ -616,9 +634,11 @@ NR == 1 {
             srccol=i
         else if ($i == "identity")
             idcol=i
+        else if ($i == "lifecycle")
+            lifecol=i
     }
 
-    if (!maccol || !ipcol || !sugcol || !cancol || !srccol || !idcol) {
+    if (!maccol || !ipcol || !sugcol || !cancol || !srccol || !idcol || !lifecol) {
         print "ERROR: required devices.tsv columns missing" > "/dev/stderr"
         failed=1
     }
@@ -634,7 +654,11 @@ NR == FNR {
     ip=$ipcol
     identity=$idcol
     canonical=shortname($cancol)
+    lifecycle=tolower($lifecol)
     own=owner(mac, ip)
+
+    if (lifecycle == "retired")
+        next
 
     #
     # Bestaande canonical namen zijn gereserveerd.
@@ -699,11 +723,19 @@ FNR == 1 {
     mac=tolower($maccol)
     ip=$ipcol
     identity=$idcol
+    lifecycle=tolower($lifecol)
 
     conflict=""
     conflict_with=""
 
     canonical=shortname($cancol)
+
+    if (lifecycle == "retired") {
+        $cancol="-"
+        $srccol="retired"
+        print $0, "", ""
+        next
+    }
 
     #
     # Alleen apparaten zonder bestaande canonical komen voor automatic

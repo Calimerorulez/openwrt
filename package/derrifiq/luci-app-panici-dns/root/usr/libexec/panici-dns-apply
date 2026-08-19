@@ -39,7 +39,7 @@ apply_dns() {
 
 HEADER=$(head -n 1 "$TMP")
 
-[ "$HEADER" = "$(printf 'mac\tcanonical\tdescription\troom\ttype\tidentity')" ] || \
+[ "$HEADER" = "$(printf 'mac\tcanonical\tdescription\troom\ttype\tidentity\tlifecycle')" ] || \
     fail "invalid TSV header"
 
 awk -F '\t' '
@@ -52,8 +52,8 @@ NR == 1 {
 }
 
 {
-    if (NF != 6) {
-        printf "line %d: expected 6 columns, got %d\n", NR, NF > "/dev/stderr"
+    if (NF != 7) {
+        printf "line %d: expected 7 columns, got %d\n", NR, NF > "/dev/stderr"
         failed=1
         next
     }
@@ -61,14 +61,28 @@ NR == 1 {
     mac=tolower($1)
     canonical=$2
     identity=$6
+    lifecycle=tolower($7)
+
+    if (lifecycle == "")
+        lifecycle="active"
 
     if (mac !~ /^[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]$/) {
         printf "line %d: invalid MAC address\n", NR > "/dev/stderr"
         failed=1
     }
 
-    if (canonical == "" || canonical !~ /^[A-Za-z0-9][A-Za-z0-9-]*$/) {
+    if (lifecycle != "active" && lifecycle != "retired") {
+        printf "line %d: lifecycle must be active or retired\n", NR > "/dev/stderr"
+        failed=1
+    }
+
+    if (canonical != "" && canonical !~ /^[A-Za-z0-9][A-Za-z0-9-]*$/) {
         printf "line %d: invalid canonical hostname\n", NR > "/dev/stderr"
+        failed=1
+    }
+
+    if (lifecycle == "active" && canonical == "") {
+        printf "line %d: active override requires canonical hostname\n", NR > "/dev/stderr"
         failed=1
     }
 
@@ -80,7 +94,12 @@ NR == 1 {
     canonical_key=tolower(canonical)
     identity_key=tolower(identity)
 
-    if (canonical_key in canonical_seen && canonical_seen[canonical_key] != mac) {
+    if (
+        lifecycle == "active" &&
+        canonical_key != "" &&
+        canonical_key in canonical_seen &&
+        canonical_seen[canonical_key] != mac
+    ) {
         if (
             identity_key == "" ||
             canonical_identity[canonical_key] == "" ||
@@ -94,7 +113,11 @@ NR == 1 {
 
     seen[mac]=1
 
-    if (!(canonical_key in canonical_seen)) {
+    if (
+        lifecycle == "active" &&
+        canonical_key != "" &&
+        !(canonical_key in canonical_seen)
+    ) {
         canonical_seen[canonical_key]=mac
         canonical_identity[canonical_key]=identity_key
     }
