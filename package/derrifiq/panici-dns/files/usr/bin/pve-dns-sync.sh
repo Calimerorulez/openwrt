@@ -8,7 +8,13 @@ KEY="/root/.ssh/id_ed25519"
 DIR="/etc/unbound/panici"
 OUT="$DIR/lxc.conf"
 HASHFILE="$DIR/lxc.conf.sha256"
-TMP="/tmp/lxc.conf.new"
+TMP="/tmp/panici-lxc.conf.$$"
+
+cleanup() {
+    rm -f "$TMP"
+}
+
+trap cleanup EXIT INT TERM
 
 mkdir -p "$DIR"
 
@@ -57,7 +63,6 @@ OLD_HASH=""
 
 if [ "$NEW_HASH" = "$OLD_HASH" ]; then
     echo "$(date '+%F %T') no changes"
-    rm -f "$TMP"
     exit 0
 fi
 
@@ -77,5 +82,14 @@ fi
 
 echo "$NEW_HASH" > "$HASHFILE"
 
-/etc/init.d/unbound reload
-echo "$(date '+%F %T') unbound reloaded"
+#
+# Batchmodus: centrale panici-dns-sync doet de reload.
+# Standalone: hier zelf reloaden.
+#
+if [ "${PANICI_BATCH:-0}" = "1" ]; then
+    touch "${PANICI_CHANGE_MARKER:-/tmp/panici-dns-sync.changed}"
+    echo "$(date '+%F %T') changes staged"
+else
+    /etc/init.d/unbound reload
+    echo "$(date '+%F %T') unbound reloaded"
+fi
