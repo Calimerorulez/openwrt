@@ -1,5 +1,23 @@
 #!/bin/sh
 
+
+###############################################################################
+# Globale Panici DNS transactielock.
+###############################################################################
+
+PANICI_LOCK="/var/lock/panici-dns.lock"
+PANICI_LOCK_WAIT="${PANICI_LOCK_WAIT:-120}"
+
+mkdir -p /var/lock
+
+exec 9>"$PANICI_LOCK"
+
+if ! flock -w "$PANICI_LOCK_WAIT" 9; then
+    echo "ERROR: timeout waiting for Panici DNS transaction lock" >&2
+    exit 75
+fi
+
+
 set -u
 
 LOCK="/tmp/panici-dns-sync.lock"

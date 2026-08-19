@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=panici-dns
 PKG_VERSION:=1.2.5
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=derrifiq
@@ -13,7 +13,7 @@ define Package/panici-dns
   SECTION:=net
   CATEGORY:=Network
   TITLE:=Panici DNS synchronization backend
-  DEPENDS:=+unbound-daemon +dropbear
+  DEPENDS:=+unbound-daemon +dropbear +flock
 endef
 
 define Package/panici-dns/description
