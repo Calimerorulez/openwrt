@@ -563,18 +563,26 @@ return view.extend({
 			'value': existing.identity || ''
 		});
 
+		var currentLifecycle =
+			existing.lifecycle ||
+			device.lifecycle ||
+			'active';
+
 		var lifecycle = E('select', {
 			'class': 'cbi-input-select'
 		}, [
 			E('option', {
-				'value': 'active',
-				'selected': (existing.lifecycle || device.lifecycle || 'active') !== 'retired'
+				'value': 'active'
 			}, _('Actief / behouden')),
 			E('option', {
-				'value': 'retired',
-				'selected': (existing.lifecycle || device.lifecycle || 'active') === 'retired'
+				'value': 'retired'
 			}, _('Verouderd / vervangen'))
 		]);
+
+		lifecycle.value =
+			currentLifecycle === 'retired'
+				? 'retired'
+				: 'active';
                 var fqdnPreview = E('strong', {}, '');
 
                 function updateFQDNPreview() {
@@ -749,7 +757,7 @@ return view.extend({
 			'click': ui.createHandlerFn(this, function() {
 				var c = canonicalShort(canonical.value);
 
-				if (!/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(c)) {
+				if (c && !/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(c)) {
 					ui.addNotification(null,
 						E('p', {}, _('Ongeldige hostnaam.')),
 						'error');

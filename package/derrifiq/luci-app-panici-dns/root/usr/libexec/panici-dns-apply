@@ -81,11 +81,6 @@ NR == 1 {
         failed=1
     }
 
-    if (lifecycle == "active" && canonical == "") {
-        printf "line %d: active override requires canonical hostname\n", NR > "/dev/stderr"
-        failed=1
-    }
-
     if (mac in seen) {
         printf "line %d: duplicate MAC address\n", NR > "/dev/stderr"
         failed=1
@@ -94,17 +89,8 @@ NR == 1 {
     canonical_key=tolower(canonical)
     identity_key=tolower(identity)
 
-    if (
-        lifecycle == "active" &&
-        canonical_key != "" &&
-        canonical_key in canonical_seen &&
-        canonical_seen[canonical_key] != mac
-    ) {
-        if (
-            identity_key == "" ||
-            canonical_identity[canonical_key] == "" ||
-            canonical_identity[canonical_key] != identity_key
-        ) {
+    if (lifecycle == "active" && canonical_key != "" && canonical_key in canonical_seen && canonical_seen[canonical_key] != mac) {
+        if (identity_key == "" || canonical_identity[canonical_key] == "" || canonical_identity[canonical_key] != identity_key) {
             printf "line %d: canonical hostname %s is already used by unrelated device %s\n", \
                 NR, canonical, canonical_seen[canonical_key] > "/dev/stderr"
             failed=1
@@ -113,11 +99,7 @@ NR == 1 {
 
     seen[mac]=1
 
-    if (
-        lifecycle == "active" &&
-        canonical_key != "" &&
-        !(canonical_key in canonical_seen)
-    ) {
+    if (lifecycle == "active" && canonical_key != "" && !(canonical_key in canonical_seen)) {
         canonical_seen[canonical_key]=mac
         canonical_identity[canonical_key]=identity_key
     }

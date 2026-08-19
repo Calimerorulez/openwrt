@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=panici-dns
 PKG_VERSION:=1.2.5
-PKG_RELEASE:=0
+PKG_RELEASE:=1
 
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=derrifiq
