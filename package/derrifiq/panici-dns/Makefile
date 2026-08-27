@@ -37,21 +37,7 @@ endef
 
 define Package/panici-dns/install
 	$(INSTALL_DIR) $(1)/usr/bin
-
-	$(INSTALL_BIN) ./files/usr/bin/panici-dns-sync \
-		$(1)/usr/bin/panici-dns-sync
-	$(INSTALL_BIN) ./files/usr/bin/pve-dns-sync.sh \
-		$(1)/usr/bin/pve-dns-sync.sh
-	$(INSTALL_BIN) ./files/usr/bin/udm-dns-sync.sh \
-		$(1)/usr/bin/udm-dns-sync.sh
-	$(INSTALL_BIN) ./files/usr/bin/panici-device-registry-sync.sh \
-		$(1)/usr/bin/panici-device-registry-sync.sh
-        $(INSTALL_BIN) ./files/usr/bin/panici-internal-zones-sync.sh \
-                $(1)/usr/bin/panici-internal-zones-sync.sh
-	$(INSTALL_BIN) ./files/usr/bin/panici-ptr-sync.sh \
-		$(1)/usr/bin/panici-ptr-sync.sh
-	$(INSTALL_BIN) ./files/usr/bin/panici-managed-dns-compile \
-		$(1)/usr/bin/panici-managed-dns-compile
+	$(INSTALL_BIN) ./files/usr/bin/panici-dns-sync $(1)/usr/bin/panici-dns-sync
 
 	$(INSTALL_DIR) $(1)/etc/unbound/panici
 	$(INSTALL_CONF) ./files/etc/unbound/panici/device-overrides.tsv \
@@ -60,8 +46,8 @@ define Package/panici-dns/install
 	$(INSTALL_DIR) $(1)/etc/panici-dns
 	$(INSTALL_CONF) ./files/etc/panici-dns/device-identities.tsv \
 		$(1)/etc/panici-dns/device-identities.tsv
-        $(INSTALL_CONF) ./files/etc/panici-dns/internal-hostnames.tsv \
-                $(1)/etc/panici-dns/internal-hostnames.tsv
+	$(INSTALL_CONF) ./files/etc/panici-dns/internal-hostnames.tsv \
+		$(1)/etc/panici-dns/internal-hostnames.tsv
 	$(INSTALL_CONF) ./files/etc/panici-dns/managed-records.tsv \
 		$(1)/etc/panici-dns/managed-records.tsv
 	$(INSTALL_CONF) ./files/etc/panici-dns/adguard-cache.conf \
