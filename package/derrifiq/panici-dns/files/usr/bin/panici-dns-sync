@@ -59,6 +59,7 @@ run() {
 run "PVE" /usr/bin/pve-dns-sync.sh
 run "UDM" /usr/bin/udm-dns-sync.sh
 run "REGISTRY" /usr/bin/panici-device-registry-sync.sh
+run "INTERNAL-ZONES" /usr/bin/panici-internal-zones-sync.sh
 run "PTR" /usr/bin/panici-ptr-sync.sh
 
 echo "$(date '+%F %T') [CHECK] validating Unbound"
