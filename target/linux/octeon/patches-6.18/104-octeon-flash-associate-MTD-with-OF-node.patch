@@ -1,0 +1,32 @@
+From: OpenWrt USG-PRO-4 maintainers <openwrt-devel@lists.openwrt.org>
+Date: Tue, 1 Sep 2026 00:00:00 +0200
+Subject: [PATCH] MIPS: octeon: associate bootbus MTD with its OF node
+
+The Octeon bootbus flash driver predates OF-aware MTD partition and
+NVMEM handling.  Associate the map and resulting MTD device with the
+platform device's OF node so command-line partitions can be matched to
+their fixed-partition nodes and expose nested NVMEM layouts.
+
+---
+ arch/mips/cavium-octeon/flash_setup.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+--- a/arch/mips/cavium-octeon/flash_setup.c
++++ b/arch/mips/cavium-octeon/flash_setup.c
+@@ -99,6 +99,7 @@ static int octeon_flash_probe(struct pla
+ 		flash_map.size = 0x1fc00000 - flash_map.phys;
+ 		/* 8-bit bus (0 + 1) or 16-bit bus (1 + 1) */
+ 		flash_map.bankwidth = region_cfg.s.width + 1;
++		flash_map.device_node = np;
+ 		flash_map.virt = ioremap(flash_map.phys, flash_map.size);
+ 		pr_notice("Bootbus flash: Setting flash for %luMB flash at "
+ 			  "0x%08llx\n", flash_map.size >> 20, flash_map.phys);
+@@ -110,6 +111,8 @@ static int octeon_flash_probe(struct pla
+ 		mymtd = do_map_probe("cfi_probe", &flash_map);
+ 		if (mymtd) {
+ 			mymtd->owner = THIS_MODULE;
++			mymtd->dev.parent = &pdev->dev;
++			mtd_set_of_node(mymtd, np);
+ 			mtd_device_parse_register(mymtd, part_probe_types,
+ 						  NULL, NULL, 0);
+ 		} else {

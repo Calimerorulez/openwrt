@@ -314,56 +314,46 @@
 	clock-frequency = <600000000>;
 };
 
-&spi {
-	status = "okay";
-
-	flash@0 {
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "Macronix,mx29lv640e", "spi-flash";
-		reg = <0>;
-		spi-max-frequency = <25000000>;
 
-		partitions {
-			compatible = "fixed-partitions";
-			#address-cells = <1>;
-			#size-cells = <1>;
+		partition@0 {
+			label = "boot0";
+			read-only;
+			reg = <0x00000 0xa0000>;
+		};
 
-			partition@0 {
-				label = "boot0";
-				read-only;
-				reg = <0x00000 0xa0000>;
-			};
+		partition@a0000 {
+			label = "boot1";
+			read-only;
+			reg = <0xa0000 0xa0000>;
+		};
 
-			partition@a0000 {
-				label = "boot1";
-				read-only;
-				reg = <0xa0000 0xa0000>;
-			};
+		partition@140000 {
+			label = "eeprom";
+			read-only;
+			reg = <0x140000 0x10000>;
 
-			partition@140000 {
-				label = "eeprom";
-				read-only;
-				reg = <0x140000 0x10000>;
+			nvmem-layout {
+				compatible = "fixed-layout";
+				#address-cells = <1>;
+				#size-cells = <1>;
 
-				nvmem-layout {
-					compatible = "fixed-layout";
-					#address-cells = <1>;
-					#size-cells = <1>;
-
-					macaddr_eeprom_0: macaddr@0 {
-						compatible = "mac-base";
-						reg = <0x0 0x6>;
-						#nvmem-cell-cells = <1>;
-					};
+				macaddr_eeprom_0: macaddr@0 {
+					compatible = "mac-base";
+					reg = <0x0 0x6>;
+					#nvmem-cell-cells = <1>;
 				};
 			};
+		};
 
-			partition@7fe000 {
-				label = "u-boot_env";
-				read-only;
-				reg = <0x7fe000 0x2000>;
-			};
+		partition@7fe000 {
+			label = "u-boot_env";
+			read-only;
+			reg = <0x7fe000 0x2000>;
 		};
 	};
 };
