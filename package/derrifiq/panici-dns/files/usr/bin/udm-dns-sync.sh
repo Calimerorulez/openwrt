@@ -129,18 +129,23 @@ fi
 # 3. IP-adressen verzamelen die al door onze vaste bronnen
 #    worden beheerd. Deze hebben altijd hogere prioriteit.
 #
-awk '
-$1 == "local-data:" && $3 == "A" {
-    ip=$4
-    sub(/"$/, "", ip)
-
-    if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)
-        print ip
-}
-' \
+for FILE in \
     "$DIR/static.conf" \
     "$DIR/iot.conf" \
-    "$DIR/lxc.conf" 2>/dev/null |
+    "$DIR/lxc.conf"
+do
+    [ -f "$FILE" ] || continue
+
+    awk '
+    $1 == "local-data:" && $3 == "A" {
+        ip=$4
+        sub(/"$/, "", ip)
+
+        if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)
+            print ip
+    }
+    ' "$FILE"
+done |
 sort -u > "$FIXED_TMP"
 
 #

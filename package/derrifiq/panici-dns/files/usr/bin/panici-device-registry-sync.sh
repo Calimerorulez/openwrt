@@ -130,24 +130,35 @@ fi
 # static.conf -> iot.conf -> lxc.conf
 ###############################################################################
 
-awk '
-$1 == "local-data:" && $3 == "A" {
-    name=$2
-    ip=$4
+(
+    set --
 
-    sub(/^"/, "", name)
-    sub(/"$/, "", ip)
+    for FILE in \
+        "$DIR/static.conf" \
+        "$DIR/iot.conf" \
+        "$DIR/lxc.conf"
+    do
+        [ -f "$FILE" ] || continue
+        set -- "$@" "$FILE"
+    done
 
-    if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && !(ip in seen)) {
-        seen[ip]=1
-        print ip "\t" name
-    }
-}
-' \
-    "$DIR/static.conf" \
-    "$DIR/iot.conf" \
-    "$DIR/lxc.conf" \
-    > "$FIXED_TMP"
+    if [ "$#" -gt 0 ]; then
+        awk '
+        $1 == "local-data:" && $3 == "A" {
+            name=$2
+            ip=$4
+
+            sub(/^"/, "", name)
+            sub(/"$/, "", ip)
+
+            if (ip ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && !(ip in seen)) {
+                seen[ip]=1
+                print ip "\t" name
+            }
+        }
+        ' "$@"
+    fi
+) > "$FIXED_TMP"
 
 ###############################################################################
 # 4. Handmatige overrides normaliseren
