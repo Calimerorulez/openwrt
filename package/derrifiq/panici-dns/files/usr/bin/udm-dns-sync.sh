@@ -10,6 +10,54 @@ REMOTE_LEASES="/run/dnsmasq.lease"
 
 DIR="/etc/unbound/panici"
 OUT="$DIR/dhcp.conf"
+
+INCLUDE_FILE="/etc/unbound/unbound_ext.conf"
+INCLUDE_LINE='include: "/etc/unbound/panici/dhcp.conf"'
+INCLUDE_ADDED=0
+
+ensure_include() {
+    [ -f "$INCLUDE_FILE" ] || {
+        echo "ERROR: Unbound include file not found: $INCLUDE_FILE" >&2
+        return 1
+    }
+
+    if grep -qxF "$INCLUDE_LINE" "$INCLUDE_FILE"; then
+        return 0
+    fi
+
+    printf '%s\n' "$INCLUDE_LINE" >> "$INCLUDE_FILE"
+    INCLUDE_ADDED=1
+
+    if [ -n "${PANICI_CHANGE_MARKER:-}" ]; then
+        : > "$PANICI_CHANGE_MARKER"
+    fi
+
+    echo "$(date '+%F %T') Unbound include added: dhcp.conf"
+}
+
+rollback_include() {
+    [ "$INCLUDE_ADDED" = "1" ] || return 0
+
+    TMP_INCLUDE="/tmp/panici-unbound-ext.$$"
+
+    if ! awk -v line="$INCLUDE_LINE" '
+        $0 != line { print }
+    ' "$INCLUDE_FILE" > "$TMP_INCLUDE"; then
+        rm -f "$TMP_INCLUDE"
+        echo "ERROR: could not prepare Unbound include rollback" >&2
+        return 1
+    fi
+
+    if ! cat "$TMP_INCLUDE" > "$INCLUDE_FILE"; then
+        rm -f "$TMP_INCLUDE"
+        echo "ERROR: could not roll back Unbound include" >&2
+        return 1
+    fi
+
+    rm -f "$TMP_INCLUDE"
+    INCLUDE_ADDED=0
+}
+
 HASHFILE="$DIR/dhcp.conf.sha256"
 OVERRIDES="$DIR/device-overrides.tsv"
 
@@ -261,8 +309,18 @@ else
     OLD_HASH=""
 fi
 
-if [ "$NEW_HASH" = "$OLD_HASH" ]; then
-    echo "$(date '+%F %T') no changes"
+if [ "$NEW_HASH" = "$OLD_HASH" ] && [ -f "$OUT" ]; then
+    if ! ensure_include; then
+        exit 1
+    fi
+
+    if ! unbound-checkconf >/dev/null 2>&1; then
+        rollback_include || true
+        echo "$(date '+%F %T') ERROR: invalid Unbound config after include repair"
+        exit 1
+    fi
+
+    echo "$(date '+%F %T') no DNS changes"
     exit 0
 fi
 
@@ -277,8 +335,19 @@ fi
 
 cp "$TMP" "$OUT"
 
+if ! ensure_include; then
+    if [ -f "$OUT.bak" ]; then
+        mv "$OUT.bak" "$OUT"
+    else
+        rm -f "$OUT"
+    fi
+    exit 1
+fi
+
 if ! unbound-checkconf >/dev/null 2>&1; then
     echo "$(date '+%F %T') ERROR: generated Unbound config is invalid"
+
+    rollback_include || true
 
     if [ -f "$OUT.bak" ]; then
         mv "$OUT.bak" "$OUT"

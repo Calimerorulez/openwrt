@@ -7,6 +7,54 @@ KEY="/root/.ssh/id_ed25519"
 
 DIR="/etc/unbound/panici"
 OUT="$DIR/lxc.conf"
+
+INCLUDE_FILE="/etc/unbound/unbound_ext.conf"
+INCLUDE_LINE='include: "/etc/unbound/panici/lxc.conf"'
+INCLUDE_ADDED=0
+
+ensure_include() {
+    [ -f "$INCLUDE_FILE" ] || {
+        echo "ERROR: Unbound include file not found: $INCLUDE_FILE" >&2
+        return 1
+    }
+
+    if grep -qxF "$INCLUDE_LINE" "$INCLUDE_FILE"; then
+        return 0
+    fi
+
+    printf '%s\n' "$INCLUDE_LINE" >> "$INCLUDE_FILE"
+    INCLUDE_ADDED=1
+
+    if [ -n "${PANICI_CHANGE_MARKER:-}" ]; then
+        : > "$PANICI_CHANGE_MARKER"
+    fi
+
+    echo "$(date '+%F %T') Unbound include added: lxc.conf"
+}
+
+rollback_include() {
+    [ "$INCLUDE_ADDED" = "1" ] || return 0
+
+    TMP_INCLUDE="/tmp/panici-unbound-ext.$$"
+
+    if ! awk -v line="$INCLUDE_LINE" '
+        $0 != line { print }
+    ' "$INCLUDE_FILE" > "$TMP_INCLUDE"; then
+        rm -f "$TMP_INCLUDE"
+        echo "ERROR: could not prepare Unbound include rollback" >&2
+        return 1
+    fi
+
+    if ! cat "$TMP_INCLUDE" > "$INCLUDE_FILE"; then
+        rm -f "$TMP_INCLUDE"
+        echo "ERROR: could not roll back Unbound include" >&2
+        return 1
+    fi
+
+    rm -f "$TMP_INCLUDE"
+    INCLUDE_ADDED=0
+}
+
 HASHFILE="$DIR/lxc.conf.sha256"
 TMP="/tmp/panici-lxc.conf.$$"
 
@@ -61,8 +109,18 @@ NEW_HASH=$(sha256sum "$TMP" | awk '{print $1}')
 OLD_HASH=""
 [ -f "$HASHFILE" ] && OLD_HASH=$(cat "$HASHFILE")
 
-if [ "$NEW_HASH" = "$OLD_HASH" ]; then
-    echo "$(date '+%F %T') no changes"
+if [ "$NEW_HASH" = "$OLD_HASH" ] && [ -f "$OUT" ]; then
+    if ! ensure_include; then
+        exit 1
+    fi
+
+    if ! unbound-checkconf >/dev/null 2>&1; then
+        rollback_include || true
+        echo "$(date '+%F %T') ERROR: invalid Unbound config after include repair"
+        exit 1
+    fi
+
+    echo "$(date '+%F %T') no DNS changes"
     exit 0
 fi
 
@@ -73,12 +131,33 @@ if [ -f "$OUT" ]; then
     diff -u "$OUT" "$TMP" 2>/dev/null || true
 fi
 
+cp "$OUT" "$OUT.bak" 2>/dev/null || true
 mv "$TMP" "$OUT"
+
+if ! ensure_include; then
+    if [ -f "$OUT.bak" ]; then
+        mv "$OUT.bak" "$OUT"
+    else
+        rm -f "$OUT"
+    fi
+    exit 1
+fi
 
 if ! unbound-checkconf >/dev/null 2>&1; then
     echo "$(date '+%F %T') ERROR: invalid Unbound config"
+
+    rollback_include || true
+
+    if [ -f "$OUT.bak" ]; then
+        mv "$OUT.bak" "$OUT"
+    else
+        rm -f "$OUT"
+    fi
+
     exit 1
 fi
+
+rm -f "$OUT.bak"
 
 echo "$NEW_HASH" > "$HASHFILE"
 

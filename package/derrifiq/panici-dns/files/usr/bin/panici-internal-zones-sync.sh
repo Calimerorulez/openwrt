@@ -11,6 +11,7 @@ HASHFILE="$DIR/internal-zones.conf.sha256"
 
 INCLUDE_FILE="/etc/unbound/unbound_ext.conf"
 INCLUDE_LINE='include: "/etc/unbound/panici/internal-zones.conf"'
+INCLUDE_ADDED=0
 
 CURRENT="/tmp/panici-internal-current.$$"
 STATE_NEW="/tmp/panici-internal-state.$$"
@@ -32,12 +33,36 @@ ensure_include() {
     fi
 
     printf '%s\n' "$INCLUDE_LINE" >> "$INCLUDE_FILE"
+    INCLUDE_ADDED=1
 
     if [ -n "${PANICI_CHANGE_MARKER:-}" ]; then
         : > "$PANICI_CHANGE_MARKER"
     fi
 
     echo "$(date '+%F %T') internal DNS zones include added"
+}
+
+rollback_include() {
+    [ "$INCLUDE_ADDED" = "1" ] || return 0
+
+    TMP_INCLUDE="/tmp/panici-unbound-ext.$$"
+
+    if ! awk -v line="$INCLUDE_LINE" '
+        $0 != line { print }
+    ' "$INCLUDE_FILE" > "$TMP_INCLUDE"; then
+        rm -f "$TMP_INCLUDE"
+        echo "ERROR: could not prepare Unbound include rollback" >&2
+        return 1
+    fi
+
+    if ! cat "$TMP_INCLUDE" > "$INCLUDE_FILE"; then
+        rm -f "$TMP_INCLUDE"
+        echo "ERROR: could not roll back Unbound include" >&2
+        return 1
+    fi
+
+    rm -f "$TMP_INCLUDE"
+    INCLUDE_ADDED=0
 }
 
 mkdir -p "$DIR" /etc/panici-dns
@@ -195,12 +220,10 @@ if command -v unbound-checkconf >/dev/null 2>&1; then
     fi
 fi
 
-ensure_include
-
 STATE_CHANGED=0
+OUT_CHANGED=0
 
 if ! cmp -s "$STATE_NEW" "$STATE"; then
-    mv "$STATE_NEW" "$STATE"
     STATE_CHANGED=1
 fi
 
@@ -210,9 +233,89 @@ OLD_HASH=""
 [ -f "$HASHFILE" ] && OLD_HASH="$(cat "$HASHFILE" 2>/dev/null || true)"
 
 if [ "$NEW_HASH" != "$OLD_HASH" ] || [ ! -f "$OUT" ]; then
-    mv "$OUT_NEW" "$OUT"
-    printf '%s\n' "$NEW_HASH" > "$HASHFILE"
+    OUT_CHANGED=1
+fi
 
+# Backups maken vóór persistente wijzigingen.
+STATE_EXISTED=0
+OUT_EXISTED=0
+HASH_EXISTED=0
+
+if [ -f "$STATE" ]; then
+    cp "$STATE" "$STATE.bak"
+    STATE_EXISTED=1
+fi
+
+if [ -f "$OUT" ]; then
+    cp "$OUT" "$OUT.bak"
+    OUT_EXISTED=1
+fi
+
+if [ -f "$HASHFILE" ]; then
+    cp "$HASHFILE" "$HASHFILE.bak"
+    HASH_EXISTED=1
+fi
+
+if [ "$STATE_CHANGED" -eq 1 ]; then
+    cp "$STATE_NEW" "$STATE"
+fi
+
+if [ "$OUT_CHANGED" -eq 1 ]; then
+    cp "$OUT_NEW" "$OUT"
+    printf '%s\n' "$NEW_HASH" > "$HASHFILE"
+fi
+
+if ! ensure_include; then
+    if [ "$STATE_EXISTED" -eq 1 ]; then
+        mv "$STATE.bak" "$STATE"
+    else
+        rm -f "$STATE"
+    fi
+
+    if [ "$OUT_EXISTED" -eq 1 ]; then
+        mv "$OUT.bak" "$OUT"
+    else
+        rm -f "$OUT"
+    fi
+
+    if [ "$HASH_EXISTED" -eq 1 ]; then
+        mv "$HASHFILE.bak" "$HASHFILE"
+    else
+        rm -f "$HASHFILE"
+    fi
+
+    exit 1
+fi
+
+if ! unbound-checkconf >/dev/null 2>&1; then
+    echo "$(date '+%F %T') ERROR: full Unbound configuration is invalid"
+
+    rollback_include || true
+
+    if [ "$STATE_EXISTED" -eq 1 ]; then
+        mv "$STATE.bak" "$STATE"
+    else
+        rm -f "$STATE"
+    fi
+
+    if [ "$OUT_EXISTED" -eq 1 ]; then
+        mv "$OUT.bak" "$OUT"
+    else
+        rm -f "$OUT"
+    fi
+
+    if [ "$HASH_EXISTED" -eq 1 ]; then
+        mv "$HASHFILE.bak" "$HASHFILE"
+    else
+        rm -f "$HASHFILE"
+    fi
+
+    exit 1
+fi
+
+rm -f "$STATE.bak" "$OUT.bak" "$HASHFILE.bak"
+
+if [ "$OUT_CHANGED" -eq 1 ]; then
     if [ -n "${PANICI_CHANGE_MARKER:-}" ]; then
         : > "$PANICI_CHANGE_MARKER"
     fi
