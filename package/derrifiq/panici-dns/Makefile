@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=panici-dns
 PKG_VERSION:=1.2.5
-PKG_RELEASE:=4
+PKG_RELEASE:=5
 
 PKG_LICENSE:=MIT
 PKG_MAINTAINER:=derrifiq
@@ -37,7 +37,20 @@ endef
 
 define Package/panici-dns/install
 	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) ./files/usr/bin/panici-dns-sync $(1)/usr/bin/panici-dns-sync
+	$(INSTALL_BIN) ./files/usr/bin/panici-dns-sync \
+		$(1)/usr/bin/panici-dns-sync
+	$(INSTALL_BIN) ./files/usr/bin/pve-dns-sync.sh \
+		$(1)/usr/bin/pve-dns-sync.sh
+	$(INSTALL_BIN) ./files/usr/bin/udm-dns-sync.sh \
+		$(1)/usr/bin/udm-dns-sync.sh
+	$(INSTALL_BIN) ./files/usr/bin/panici-device-registry-sync.sh \
+		$(1)/usr/bin/panici-device-registry-sync.sh
+	$(INSTALL_BIN) ./files/usr/bin/panici-internal-zones-sync.sh \
+		$(1)/usr/bin/panici-internal-zones-sync.sh
+	$(INSTALL_BIN) ./files/usr/bin/panici-ptr-sync.sh \
+		$(1)/usr/bin/panici-ptr-sync.sh
+	$(INSTALL_BIN) ./files/usr/bin/panici-managed-dns-compile \
+		$(1)/usr/bin/panici-managed-dns-compile
 
 	$(INSTALL_DIR) $(1)/etc/unbound/panici
 	$(INSTALL_CONF) ./files/etc/unbound/panici/device-overrides.tsv \
